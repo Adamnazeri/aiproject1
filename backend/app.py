@@ -34,13 +34,14 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# AI Assistant config — needs the user's own Anthropic API key.
-# Get one at https://console.anthropic.com, then put it in a `.env` file
-# (copy `.env.example` to `.env` and fill in the value). Never commit `.env`.
+# AI Assistant config — needs your own OpenRouter API key (free tier
+# available). Get one at https://openrouter.ai/keys, then put it in a
+# `.env` file (copy `.env.example` to `.env` and fill in the value).
+# Never commit `.env`.
 # ---------------------------------------------------------------------------
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
-ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 def secure_filename(filename: str) -> str:
@@ -506,20 +507,20 @@ def match_resume_to_all_jobs(resume_id: int):
 @app.post("/api/assistant")
 def assistant_chat(payload: AssistantRequest):
     """
-    AI-powered career assistant. Talks to the real Anthropic API, so it
-    needs your own API key — get one at https://console.anthropic.com,
-    then put it in a .env file as ANTHROPIC_API_KEY=... (see .env.example).
+    AI-powered career assistant. Talks to OpenRouter (OpenAI-compatible API),
+    so it needs your own OpenRouter API key — get one free at
+    https://openrouter.ai/keys, then put it in a .env file as
+    OPENROUTER_API_KEY=... (see .env.example).
     """
-    if not ANTHROPIC_API_KEY:
+    if not OPENROUTER_API_KEY:
         return JSONResponse(status_code=503, content={
-            "error": "AI assistant isn't configured yet. Add your Anthropic API key to a .env file "
-                     "as ANTHROPIC_API_KEY=... (see .env.example), then restart the server."
+            "error": "AI assistant isn't configured yet. Add your OpenRouter API key to a .env file "
+                     "as OPENROUTER_API_KEY=... (see .env.example), then restart the server."
         })
 
     if not payload.messages:
         return JSONResponse(status_code=400, content={"error": "No messages provided"})
 
-    messages = [m.model_dump() for m in payload.messages]
     context = payload.context or {}
 
     system_prompt = (
@@ -535,19 +536,24 @@ def assistant_chat(payload: AssistantRequest):
     if context.get("top_matches"):
         system_prompt += f"\n\n--- THEIR TOP JOB MATCHES (from the scanner) ---\n{json.dumps(context['top_matches'], indent=2)}"
 
+    # OpenRouter uses the OpenAI chat-completions format: system prompt goes
+    # inside the messages array, not as a separate top-level field.
+    chat_messages = [{"role": "system", "content": system_prompt}] + [
+        m.model_dump() for m in payload.messages
+    ]
+
     try:
         resp = requests.post(
-            ANTHROPIC_API_URL,
+            OPENROUTER_API_URL,
             headers={
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "http://localhost:5000",
+                "X-Title": "SIGNAL Resume Matcher",
             },
             json={
-                "model": ANTHROPIC_MODEL,
-                "max_tokens": 1024,
-                "system": system_prompt,
-                "messages": messages,
+                "model": OPENROUTER_MODEL,
+                "messages": chat_messages,
             },
             timeout=30,
         )
@@ -562,9 +568,10 @@ def assistant_chat(payload: AssistantRequest):
         return JSONResponse(status_code=502, content={"error": f"AI service error ({resp.status_code}): {detail}"})
 
     result = resp.json()
-    reply_text = "".join(
-        block.get("text", "") for block in result.get("content", []) if block.get("type") == "text"
-    )
+    try:
+        reply_text = result["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        reply_text = ""
     return {"reply": reply_text}
 
 
