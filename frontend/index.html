@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIGNAL — AI Resume Matcher</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="scan-line"></div>
+
+<header class="topbar">
+  <div class="logo">
+    <span class="logo-mark">◈</span>
+    <span>SIGNAL</span>
+  </div>
+  <div class="topbar-sub">resume &rarr; job frequency matcher</div>
+</header>
+
+<main>
+  <section class="builder">
+    <p class="eyebrow">// 00 — BUILD RESUME</p>
+    <h2 class="builder-title">Don't have a resume yet? Build one here.</h2>
+    <p class="hero-copy">Fill in your details below and generate a clean, ready-to-use resume — then send it straight into the scanner.</p>
+
+    <div class="builder-grid">
+      <input id="bFullName" type="text" placeholder="Full name" />
+      <input id="bEmail" type="text" placeholder="Email" />
+      <input id="bPhone" type="text" placeholder="Phone number" />
+      <input id="bTargetRole" type="text" placeholder="Target role (optional)" />
+    </div>
+
+    <textarea id="bSummary" class="builder-textarea" placeholder="Short summary / objective — 2-3 sentences about yourself"></textarea>
+    <input id="bSkills" type="text" placeholder="Skills, comma-separated — e.g. python, excel, customer service" />
+
+    <p class="section-label">Your Photo (optional)</p>
+    <div class="photo-upload-row">
+      <div id="photoPreview" class="photo-preview">No photo</div>
+      <div>
+        <input type="file" id="bPhoto" accept="image/*" />
+        <button type="button" id="removePhotoBtn" class="secondary-btn" style="margin-top: 0.5rem;">Remove photo</button>
+      </div>
+    </div>
+
+    <p class="section-label">Choose a Template</p>
+    <div class="template-picker" id="templatePicker">
+      <div class="template-option selected" data-template="minimal">
+        <div class="template-thumb template-thumb-minimal"></div>
+        <span>Minimal</span>
+      </div>
+      <div class="template-option" data-template="sidebar">
+        <div class="template-thumb template-thumb-sidebar"></div>
+        <span>Sidebar</span>
+      </div>
+      <div class="template-option" data-template="bold">
+        <div class="template-thumb template-thumb-bold"></div>
+        <span>Bold Header</span>
+      </div>
+    </div>
+
+    <p class="section-label">Work Experience</p>
+    <div id="experienceList" class="dynamic-list"></div>
+    <button type="button" id="addExperienceBtn" class="secondary-btn">+ Add work experience</button>
+
+    <p class="section-label">Education</p>
+    <div id="educationList" class="dynamic-list"></div>
+    <button type="button" id="addEducationBtn" class="secondary-btn">+ Add education</button>
+
+    <div class="input-row" style="margin-top: 1.5rem;">
+      <button id="generateBtn">
+        <span class="btn-label">GENERATE RESUME</span>
+        <span class="btn-arrow">→</span>
+      </button>
+    </div>
+    <p id="builderStatus" class="status-msg"></p>
+
+    <div id="generatedPreview" hidden>
+      <p class="eyebrow" style="margin-top: 2rem;">// GENERATED RESUME</p>
+      <div id="resumeVisual" class="resume-visual-wrap"></div>
+      <div class="input-row">
+        <button type="button" id="useForScanBtn" class="secondary-btn">Use this to scan jobs ↓</button>
+        <button type="button" id="downloadPdfBtn" class="secondary-btn">Download / Print as PDF</button>
+        <button type="button" id="downloadBtn" class="secondary-btn">Download plain .txt</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="hero">
+    <p class="eyebrow">// 01 — INPUT</p>
+    <h1>Paste your resume.<br>Read the signal.</h1>
+    <p class="hero-copy">Drop your resume text in below. The engine extracts your skill signature — across tech, business, healthcare, hospitality, education, and more — and tunes it against every open role in the database. No guesswork, just a ranked frequency match.</p>
+
+    <textarea id="resumeText" placeholder="Paste your resume text here... e.g. 'Admin executive with 3 years experience in data entry, scheduling, bookkeeping, and customer service. Handled invoicing and worked closely with the finance team...'"></textarea>
+
+    <div class="file-upload-row">
+      <label for="resumeFileInput" class="secondary-btn file-label">📄 Upload resume file (.txt, .pdf, .docx)</label>
+      <input type="file" id="resumeFileInput" accept=".txt,.pdf,.docx" hidden />
+      <span id="fileUploadStatus" class="status-msg"></span>
+    </div>
+
+    <div class="input-row">
+      <input id="filename" type="text" placeholder="filename (optional) — e.g. john_resume.txt" />
+      <button id="scanBtn">
+        <span class="btn-label">RUN SCAN</span>
+        <span class="btn-arrow">→</span>
+      </button>
+    </div>
+    <p id="statusMsg" class="status-msg"></p>
+  </section>
+
+  <section class="results" id="resultsSection" hidden>
+    <p class="eyebrow">// 02 — DETECTED SIGNATURE</p>
+    <div id="skillTags" class="skill-tags"></div>
+
+    <p class="eyebrow" style="margin-top: 3rem;">// 03 — MATCHED FREQUENCIES</p>
+    <p class="legend"><span style="color:var(--amber)">■ exact match</span><span style="color:var(--amber-dim)">▨ related field</span><span style="color:var(--text-dim); text-decoration:line-through;">missing</span></p>
+    <div id="matchList" class="match-list"></div>
+  </section>
+
+  <section class="results" id="jobsSection">
+    <p class="eyebrow">// 04 — OPEN CHANNELS</p>
+    <div id="jobsList" class="jobs-list"></div>
+  </section>
+
+  <section class="assistant">
+    <p class="eyebrow">// 05 — ASK THE ASSISTANT</p>
+    <h2 class="builder-title">Career AI Assistant</h2>
+    <p class="hero-copy">Ask about your resume, your scan results, or how to close the gap on a job you're eyeing — it sees your current resume and match results.</p>
+
+    <div id="chatMessages" class="chat-messages"></div>
+
+    <div class="input-row">
+      <input id="chatInput" type="text" placeholder="e.g. How can I improve my match for the Backend Engineer role?" />
+      <button id="chatSendBtn">
+        <span class="btn-label">ASK</span>
+        <span class="btn-arrow">→</span>
+      </button>
+    </div>
+    <p id="chatStatus" class="status-msg"></p>
+  </section>
+</main>
+
+<footer>
+  <span>Built with Python · FastAPI · SQLite · vanilla JS</span>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
