@@ -1,13 +1,13 @@
 :root {
-  --bg: #0B0E14;
-  --bg-raised: #111623;
-  --line: #232B3D;
-  --amber: #FFB000;
-  --amber-dim: #8A6318;
-  --teal: #4C6B87;
-  --text: #E8E6DF;
-  --text-dim: #7C8494;
-  --font-display: 'JetBrains Mono', monospace;
+  --bg: #120E1A;
+  --bg-raised: #1D1729;
+  --line: #362C44;
+  --accent: #FF6B5B;
+  --accent-dim: #8C4137;
+  --secondary: #8FD9C4;
+  --text: #F2EEE9;
+  --text-dim: #9C90A8;
+  --font-display: 'Space Grotesk', sans-serif;
   --font-body: 'Inter', sans-serif;
 }
 
@@ -21,25 +21,6 @@ body {
   min-height: 100vh;
   position: relative;
   overflow-x: hidden;
-}
-
-/* ambient scan line across the whole page */
-.scan-line {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--amber), transparent);
-  opacity: 0.5;
-  animation: scan 6s linear infinite;
-  pointer-events: none;
-  z-index: 10;
-}
-@keyframes scan {
-  0% { transform: translateY(0); }
-  100% { transform: translateY(100vh); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .scan-line { animation: none; display: none; }
 }
 
 .topbar {
@@ -58,7 +39,7 @@ body {
   align-items: center;
   gap: 0.5rem;
 }
-.logo-mark { color: var(--amber); }
+.logo-mark { color: var(--accent); }
 .topbar-sub {
   font-family: var(--font-display);
   font-size: 0.75rem;
@@ -69,7 +50,7 @@ main { max-width: 780px; margin: 0 auto; padding: 3rem 2rem 5rem; }
 
 .eyebrow {
   font-family: var(--font-display);
-  color: var(--amber);
+  color: var(--accent);
   font-size: 0.75rem;
   letter-spacing: 0.1em;
   margin: 0 0 0.75rem;
@@ -105,7 +86,7 @@ textarea {
   outline: none;
   transition: border-color 0.2s;
 }
-textarea:focus { border-color: var(--amber-dim); }
+textarea:focus { border-color: var(--accent-dim); }
 textarea::placeholder { color: var(--text-dim); }
 
 .input-row {
@@ -125,11 +106,11 @@ input[type="text"] {
   font-family: var(--font-body);
   outline: none;
 }
-input[type="text"]:focus { border-color: var(--amber-dim); }
+input[type="text"]:focus { border-color: var(--accent-dim); }
 
 button#scanBtn {
-  background: var(--amber);
-  color: #14110A;
+  background: var(--accent);
+  color: #1A1220;
   border: none;
   border-radius: 4px;
   padding: 0.85rem 1.5rem;
@@ -143,7 +124,7 @@ button#scanBtn {
   gap: 0.6rem;
   transition: transform 0.15s, box-shadow 0.15s;
 }
-button#scanBtn:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(255,176,0,0.25); }
+button#scanBtn:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(255,107,91,0.3); }
 button#scanBtn:active { transform: translateY(0); }
 button#scanBtn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
 
@@ -162,8 +143,8 @@ button#scanBtn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; bo
 .skill-tag {
   font-family: var(--font-display);
   font-size: 0.75rem;
-  border: 1px solid var(--amber-dim);
-  color: var(--amber);
+  border: 1px solid var(--accent-dim);
+  color: var(--accent);
   padding: 0.3rem 0.7rem;
   border-radius: 3px;
   text-transform: lowercase;
@@ -186,7 +167,7 @@ button#scanBtn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; bo
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 1.3rem;
-  color: var(--amber);
+  color: var(--accent);
   white-space: nowrap;
 }
 
@@ -200,7 +181,7 @@ button#scanBtn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; bo
 }
 .meter-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--teal), var(--amber));
+  background: linear-gradient(90deg, var(--secondary), var(--accent));
   border-radius: 3px;
   width: 0%;
   transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
@@ -212,8 +193,8 @@ button#scanBtn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; bo
   padding: 0.15rem 0.5rem;
   border-radius: 3px;
 }
-.skill-pill-matched { background: rgba(255,176,0,0.12); color: var(--amber); }
-.skill-pill-related { background: transparent; border: 1px dashed var(--amber-dim); color: var(--amber-dim); }
+.skill-pill-matched { background: rgba(255,107,91,0.12); color: var(--accent); }
+.skill-pill-related { background: transparent; border: 1px dashed var(--accent-dim); color: var(--accent-dim); }
 .skill-pill-missing { background: rgba(124,132,148,0.12); color: var(--text-dim); text-decoration: line-through; }
 
 .legend {
@@ -279,7 +260,7 @@ footer {
   outline: none;
   margin-bottom: 0.75rem;
 }
-.builder-textarea:focus { border-color: var(--amber-dim); }
+.builder-textarea:focus { border-color: var(--accent-dim); }
 .builder-textarea::placeholder { color: var(--text-dim); }
 
 .section-label {
@@ -315,7 +296,7 @@ footer {
   width: 100%;
   box-sizing: border-box;
 }
-.entry-row input:focus, .entry-row textarea:focus { border-color: var(--amber-dim); }
+.entry-row input:focus, .entry-row textarea:focus { border-color: var(--accent-dim); }
 .entry-row textarea { grid-column: 1 / -1; min-height: 70px; resize: vertical; }
 .entry-row .remove-entry-btn {
   grid-column: 1 / -1;
@@ -335,8 +316,8 @@ footer {
 
 .secondary-btn {
   background: transparent;
-  border: 1px solid var(--amber-dim);
-  color: var(--amber);
+  border: 1px solid var(--accent-dim);
+  color: var(--accent);
   border-radius: 4px;
   padding: 0.6rem 1rem;
   font-family: var(--font-display);
@@ -345,7 +326,7 @@ footer {
   cursor: pointer;
   transition: background 0.15s;
 }
-.secondary-btn:hover { background: rgba(255,176,0,0.08); }
+.secondary-btn:hover { background: rgba(255,107,91,0.08); }
 
 .resume-output {
   background: var(--bg-raised);
@@ -410,8 +391,8 @@ footer {
   transition: border-color 0.15s;
   width: 90px;
 }
-.template-option:hover { border-color: var(--amber-dim); }
-.template-option.selected { border-color: var(--amber); color: var(--amber); }
+.template-option:hover { border-color: var(--accent-dim); }
+.template-option.selected { border-color: var(--accent); color: var(--accent); }
 .template-thumb {
   width: 100%;
   height: 56px;
@@ -522,7 +503,7 @@ footer {
 }
 .chat-bubble.user {
   align-self: flex-end;
-  background: rgba(255,176,0,0.12);
+  background: rgba(255,107,91,0.12);
   color: var(--text);
 }
 .chat-bubble.assistant {
