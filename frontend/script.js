@@ -7,31 +7,6 @@ const statusMsg = document.getElementById("statusMsg");
 const resultsSection = document.getElementById("resultsSection");
 const skillTagsEl = document.getElementById("skillTags");
 const matchListEl = document.getElementById("matchList");
-const jobsListEl = document.getElementById("jobsList");
-
-async function loadJobs() {
-  try {
-    const res = await fetch(`${API_BASE}/jobs`);
-    const jobs = await res.json();
-    jobsListEl.innerHTML = jobs.map(job => `
-      <div class="job-card">
-        <div class="job-card-top">
-          <div>
-            <div class="match-title">${job.title}</div>
-            <div class="match-company">${job.company}</div>
-          </div>
-          <div class="job-location">${job.location || ""}</div>
-        </div>
-        <p class="job-desc">${job.description}</p>
-        <div class="skill-row">
-          ${job.required_skills.map(s => `<span class="skill-pill-matched">${s}</span>`).join("")}
-        </div>
-      </div>
-    `).join("");
-  } catch (err) {
-    console.error("Failed to load jobs", err);
-  }
-}
 
 function renderSkillTags(skills) {
   skillTagsEl.innerHTML = skills.length
@@ -117,7 +92,6 @@ async function runScan() {
 }
 
 scanBtn.addEventListener("click", runScan);
-loadJobs();
 
 // --- Upload an existing resume file (.txt / .pdf / .docx) ---
 const resumeFileInput = document.getElementById("resumeFileInput");
