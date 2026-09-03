@@ -20,7 +20,6 @@ function renderMatches(results) {
       <div class="match-card-top">
         <div>
           <div class="match-title">${r.title}</div>
-          <div class="match-company">${r.company} · ${r.location || ""}</div>
         </div>
         <div class="match-score">${r.score}%</div>
       </div>
@@ -248,8 +247,8 @@ function renderResumeVisual(template, data) {
 
   const experienceHtml = validExperience.map(exp => `
     <div class="r-entry">
-      <div class="r-entry-title">${escapeHtml(exp.title)}${exp.company ? " — " + escapeHtml(exp.company) : ""}</div>
-      <div class="r-entry-sub">${[exp.duration, exp.location].filter(Boolean).map(escapeHtml).join(" · ")}</div>
+      <div class="r-entry-title">${escapeHtml(exp.title)}</div>
+      ${exp.duration ? `<div class="r-entry-sub">${escapeHtml(exp.duration)}</div>` : ""}
       ${exp.description ? `<ul>${exp.description.split("\n").filter(l => l.trim()).map(l => `<li>${escapeHtml(l.trim())}</li>`).join("")}</ul>` : ""}
     </div>
   `).join("");

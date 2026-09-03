@@ -282,11 +282,10 @@ def build_resume_text(data: dict) -> str:
         lines.append("-" * 40)
         for exp in experience:
             title = exp.get("title", "").strip()
-            company = exp.get("company", "").strip()
             duration = exp.get("duration", "").strip()
             description = exp.get("description", "").strip()
 
-            header = " — ".join(filter(None, [title, company]))
+            header = title
             if duration:
                 header += f" ({duration})"
             if header:
@@ -492,7 +491,6 @@ def match_resume_to_all_jobs(resume_id: int):
         results.append({
             "job_id": job["id"],
             "title": job["title"],
-            "company": job["company"],
             "location": job["location"],
             **match,
         })
