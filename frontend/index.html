@@ -11,15 +11,21 @@
 <body>
 
 <header class="topbar">
-  <div class="logo">
-    <span class="logo-mark">◈</span>
-    <span>SIGNAL</span>
+  <div class="topbar-left">
+    <div class="logo">
+      <span class="logo-mark">◈</span>
+      <span>SIGNAL</span>
+    </div>
+    <div class="topbar-sub">resume &rarr; job frequency matcher</div>
   </div>
-  <div class="topbar-sub">resume &rarr; job frequency matcher</div>
+  <div class="topbar-right" id="authArea">
+    <button type="button" class="nav-btn ghost" id="loginNavBtn">Log in</button>
+    <button type="button" class="nav-btn primary" id="signupNavBtn">Sign up</button>
+  </div>
 </header>
 
 <main>
-  <section class="builder">
+  <section class="builder section-animate">
     <p class="eyebrow">// 00 — BUILD RESUME</p>
     <h2 class="builder-title">Don't have a resume yet? Build one here.</h2>
     <p class="hero-copy">Fill in your details below and generate a clean, ready-to-use resume — then send it straight into the scanner.</p>
@@ -86,7 +92,7 @@
     </div>
   </section>
 
-  <section class="hero">
+  <section class="hero section-animate">
     <p class="eyebrow">// 01 — INPUT</p>
     <h1>Paste your resume.<br>Read the signal.</h1>
     <p class="hero-copy">Drop your resume text in below. The engine extracts your skill signature — across tech, business, healthcare, hospitality, education, and more — and tunes it against every open role in the database. No guesswork, just a ranked frequency match.</p>
@@ -114,7 +120,7 @@
     <div id="skillTags" class="skill-tags"></div>
 
     <p class="eyebrow" style="margin-top: 3rem;">// 03 — MATCHED FREQUENCIES</p>
-    <p class="legend"><span style="color:var(--accent)">■ exact match</span><span style="color:var(--accent-dim)">▨ related field</span><span style="color:var(--text-dim); text-decoration:line-through;">missing</span></p>
+    <p class="legend"><span style="color:var(--accent)">■ exact match</span><span style="color:var(--secondary)">▨ related field</span><span style="color:var(--text-dim); text-decoration:line-through;">missing</span></p>
     <div id="matchList" class="match-list"></div>
   </section>
 
@@ -134,11 +140,75 @@
     </div>
     <p id="chatStatus" class="status-msg"></p>
   </section>
+
+  <section class="pricing">
+    <p class="eyebrow">// 06 — PLANS</p>
+    <h2 class="builder-title">Simple, transparent pricing</h2>
+    <p class="hero-copy">This is a demo checkout — no real card is charged. Wire in Stripe (or your gateway of choice) later without changing the frontend.</p>
+
+    <div class="pricing-grid">
+      <div class="plan-card" data-plan="free">
+        <div class="plan-name">Free</div>
+        <div class="plan-price">RM0 <span>/ month</span></div>
+        <ul class="plan-features">
+          <li>Unlimited resume scans</li>
+          <li>Resume builder (3 templates)</li>
+          <li>Basic skill matching</li>
+        </ul>
+        <button type="button" class="secondary-btn subscribe-btn" data-plan="free">Current plan</button>
+      </div>
+      <div class="plan-card featured" data-plan="pro">
+        <div class="plan-name">Pro</div>
+        <div class="plan-price">RM19 <span>/ month</span></div>
+        <ul class="plan-features">
+          <li>Everything in Free</li>
+          <li>Unlimited AI Assistant chats</li>
+          <li>Saved resume history</li>
+          <li>Priority match refresh</li>
+        </ul>
+        <button type="button" class="primary-btn subscribe-btn" data-plan="pro">Upgrade to Pro</button>
+        <p class="plan-note">Mock checkout — replace with a real gateway when ready.</p>
+      </div>
+    </div>
+    <p id="pricingStatus" class="status-msg"></p>
+  </section>
 </main>
 
 <footer>
   <span>Built with Python · FastAPI · SQLite · vanilla JS</span>
 </footer>
+
+<!-- Auth modal (login / signup) -->
+<div class="modal-overlay" id="authModal" hidden>
+  <div class="modal-card">
+    <button type="button" class="modal-close" id="authModalClose">✕</button>
+
+    <div id="loginPane">
+      <h3 class="modal-title">Welcome back</h3>
+      <p class="modal-subtitle">Log in to save your resumes and match history.</p>
+      <div class="modal-form">
+        <input type="email" id="loginEmail" placeholder="Email" />
+        <input type="password" id="loginPassword" placeholder="Password" />
+        <button type="button" class="primary-btn" id="loginSubmitBtn" style="justify-content:center;">Log in</button>
+      </div>
+      <p id="loginStatus" class="status-msg"></p>
+      <p class="modal-switch">Don't have an account? <button type="button" id="switchToSignup">Sign up</button></p>
+    </div>
+
+    <div id="signupPane" hidden>
+      <h3 class="modal-title">Create your account</h3>
+      <p class="modal-subtitle">Free to start — upgrade any time.</p>
+      <div class="modal-form">
+        <input type="text" id="signupName" placeholder="Full name" />
+        <input type="email" id="signupEmail" placeholder="Email" />
+        <input type="password" id="signupPassword" placeholder="Password (min. 6 characters)" />
+        <button type="button" class="primary-btn" id="signupSubmitBtn" style="justify-content:center;">Sign up</button>
+      </div>
+      <p id="signupStatus" class="status-msg"></p>
+      <p class="modal-switch">Already have an account? <button type="button" id="switchToLogin">Log in</button></p>
+    </div>
+  </div>
+</div>
 
 <script src="script.js"></script>
 </body>
