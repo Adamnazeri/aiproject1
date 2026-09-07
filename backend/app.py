@@ -6,12 +6,17 @@ Or:  uvicorn backend.app:app --reload --port 5000   (from the project root)
 import os
 import re
 import json
+import time
 import sqlite3
 import difflib
+import hashlib
+import hmac
+import base64
+import secrets
 
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -43,11 +48,79 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
+# ---------------------------------------------------------------------------
+# Auth config — used to sign login tokens. Set a real random value in your
+# .env as SECRET_KEY=... in production (see .env.example).
+# ---------------------------------------------------------------------------
+SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-change-this-secret-key")
+TOKEN_LIFETIME_SECONDS = 60 * 60 * 24 * 7  # 7 days
+
 
 def secure_filename(filename: str) -> str:
     """Minimal filename sanitizer (keeps letters, digits, dot, dash, underscore)."""
     filename = os.path.basename(filename)
     return re.sub(r"[^A-Za-z0-9_.-]", "_", filename)
+
+
+# ---------------------------------------------------------------------------
+# Password hashing (PBKDF2-SHA256, stdlib only — no extra dependency needed)
+# ---------------------------------------------------------------------------
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 100_000)
+    return f"{salt}${digest.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        salt, digest_hex = stored.split("$", 1)
+    except ValueError:
+        return False
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 100_000)
+    return hmac.compare_digest(digest.hex(), digest_hex)
+
+
+# ---------------------------------------------------------------------------
+# Simple signed auth tokens (HMAC — stdlib only, no JWT dependency needed).
+# Format: base64("<user_id>:<expiry_ts>:<signature>")
+# ---------------------------------------------------------------------------
+def create_token(user_id: int) -> str:
+    expiry = int(time.time()) + TOKEN_LIFETIME_SECONDS
+    payload = f"{user_id}:{expiry}"
+    signature = hmac.new(SECRET_KEY.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    raw = f"{payload}:{signature}"
+    return base64.urlsafe_b64encode(raw.encode()).decode()
+
+
+def verify_token(token: str):
+    try:
+        raw = base64.urlsafe_b64decode(token.encode()).decode()
+        user_id_str, expiry_str, signature = raw.split(":")
+        payload = f"{user_id_str}:{expiry_str}"
+        expected_sig = hmac.new(SECRET_KEY.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(signature, expected_sig):
+            return None
+        if int(expiry_str) < int(time.time()):
+            return None
+        return int(user_id_str)
+    except Exception:
+        return None
+
+
+def get_current_user_id(authorization: str = Header(None)):
+    """Returns the user_id if a valid Bearer token is present, else None.
+    Endpoints decide for themselves whether auth is required."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.removeprefix("Bearer ").strip()
+    return verify_token(token)
+
+
+def require_user_id(authorization: str = Header(None)):
+    user_id = get_current_user_id(authorization)
+    if user_id is None:
+        return None
+    return user_id
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +313,27 @@ def get_db():
     return conn
 
 
+def ensure_schema_upgrades():
+    """Adds new columns to an already-existing database without wiping data.
+    Safe to run every startup — each ALTER is skipped if the column exists."""
+    if not os.path.exists(DB_PATH):
+        return
+    conn = sqlite3.connect(DB_PATH)
+    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    upgrades = {
+        "plan": "ALTER TABLE users ADD COLUMN plan TEXT DEFAULT 'free'",
+        "plan_started_at": "ALTER TABLE users ADD COLUMN plan_started_at TIMESTAMP",
+    }
+    for col, stmt in upgrades.items():
+        if col not in existing_cols:
+            conn.execute(stmt)
+    conn.commit()
+    conn.close()
+
+
+ensure_schema_upgrades()
+
+
 # ---------------------------------------------------------------------------
 # Resume builder — turns structured form data into a clean, formatted
 # plain-text resume. Template-based (no external API key needed); swap this
@@ -379,6 +473,107 @@ class AssistantRequest(BaseModel):
     context: dict = {}
 
 
+class SignupRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class SubscribeRequest(BaseModel):
+    plan: str  # "free" | "pro"
+
+
+# ---------------------------------------------------------------------------
+# Auth routes
+# ---------------------------------------------------------------------------
+@app.post("/api/auth/signup")
+def signup(payload: SignupRequest):
+    name = payload.name.strip()
+    email = payload.email.strip().lower()
+    password = payload.password
+
+    if not name or not email or not password:
+        return JSONResponse(status_code=400, content={"error": "Name, email and password are all required"})
+    if len(password) < 6:
+        return JSONResponse(status_code=400, content={"error": "Password must be at least 6 characters"})
+
+    conn = get_db()
+    existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+    if existing:
+        conn.close()
+        return JSONResponse(status_code=409, content={"error": "An account with that email already exists"})
+
+    password_hash = hash_password(password)
+    cur = conn.execute(
+        "INSERT INTO users (name, email, password_hash, plan) VALUES (?, ?, ?, 'free')",
+        (name, email, password_hash),
+    )
+    conn.commit()
+    user_id = cur.lastrowid
+    conn.close()
+
+    token = create_token(user_id)
+    return {"token": token, "user": {"id": user_id, "name": name, "email": email, "plan": "free"}}
+
+
+@app.post("/api/auth/login")
+def login(payload: LoginRequest):
+    email = payload.email.strip().lower()
+    conn = get_db()
+    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    conn.close()
+
+    if user is None or not verify_password(payload.password, user["password_hash"]):
+        return JSONResponse(status_code=401, content={"error": "Incorrect email or password"})
+
+    token = create_token(user["id"])
+    return {
+        "token": token,
+        "user": {"id": user["id"], "name": user["name"], "email": user["email"], "plan": user["plan"] or "free"},
+    }
+
+
+@app.get("/api/auth/me")
+def me(authorization: str = Header(None)):
+    user_id = get_current_user_id(authorization)
+    if user_id is None:
+        return JSONResponse(status_code=401, content={"error": "Not authenticated"})
+    conn = get_db()
+    user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    if user is None:
+        return JSONResponse(status_code=401, content={"error": "Not authenticated"})
+    return {"id": user["id"], "name": user["name"], "email": user["email"], "plan": user["plan"] or "free"}
+
+
+# ---------------------------------------------------------------------------
+# Mock subscription routes — no real payment gateway wired up yet. Swap the
+# body of `subscribe()` for a real Stripe Checkout session later; the
+# frontend contract (POST plan -> user's plan updates) can stay the same.
+# ---------------------------------------------------------------------------
+@app.post("/api/subscribe")
+def subscribe(payload: SubscribeRequest, authorization: str = Header(None)):
+    user_id = get_current_user_id(authorization)
+    if user_id is None:
+        return JSONResponse(status_code=401, content={"error": "Please log in first"})
+    if payload.plan not in ("free", "pro"):
+        return JSONResponse(status_code=400, content={"error": "Unknown plan"})
+
+    conn = get_db()
+    conn.execute(
+        "UPDATE users SET plan = ?, plan_started_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (payload.plan, user_id),
+    )
+    conn.commit()
+    conn.close()
+    return {"plan": payload.plan, "status": "mock_success", "message": "This is a demo checkout — no real payment was taken."}
+
+
 # ---------------------------------------------------------------------------
 # API routes
 # ---------------------------------------------------------------------------
@@ -414,7 +609,7 @@ def generate_resume(payload: GenerateResumeRequest):
 
 
 @app.post("/api/resumes")
-def upload_resume(payload: ResumeTextRequest):
+def upload_resume(payload: ResumeTextRequest, authorization: str = Header(None)):
     """Accepts JSON: { "filename": str, "text": str }"""
     filename = payload.filename
     text = payload.text
@@ -423,11 +618,12 @@ def upload_resume(payload: ResumeTextRequest):
         return JSONResponse(status_code=400, content={"error": "Resume text is empty"})
 
     skills = extract_skills(text)
+    user_id = get_current_user_id(authorization) or 1
 
     conn = get_db()
     cur = conn.execute(
         "INSERT INTO resumes (user_id, filename, raw_text, extracted_skills) VALUES (?, ?, ?, ?)",
-        (1, filename, text, json.dumps(skills)),
+        (user_id, filename, text, json.dumps(skills)),
     )
     conn.commit()
     resume_id = cur.lastrowid
@@ -437,7 +633,7 @@ def upload_resume(payload: ResumeTextRequest):
 
 
 @app.post("/api/resumes/upload-file")
-def upload_resume_file(file: UploadFile = File(...)):
+def upload_resume_file(file: UploadFile = File(...), authorization: str = Header(None)):
     """Accepts multipart/form-data with a 'file' field (.txt, .pdf, or .docx)."""
     if not file.filename:
         return JSONResponse(status_code=400, content={"error": "No file selected"})
@@ -456,11 +652,12 @@ def upload_resume_file(file: UploadFile = File(...)):
         return JSONResponse(status_code=400, content={"error": "No readable text found in that file — it might be a scanned image PDF."})
 
     skills = extract_skills(text)
+    user_id = get_current_user_id(authorization) or 1
 
     conn = get_db()
     cur = conn.execute(
         "INSERT INTO resumes (user_id, filename, raw_text, extracted_skills) VALUES (?, ?, ?, ?)",
-        (1, filename, text, json.dumps(skills)),
+        (user_id, filename, text, json.dumps(skills)),
     )
     conn.commit()
     resume_id = cur.lastrowid

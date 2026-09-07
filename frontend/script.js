@@ -1,5 +1,209 @@
 const API_BASE = "http://localhost:5000/api";
 
+// ---------------------------------------------------------------------------
+// Auth — token stored in localStorage; sent as "Authorization: Bearer <token>"
+// on requests that support it. Endpoints work fine without login too
+// (guest mode), auth just unlocks saved plan/history state.
+// ---------------------------------------------------------------------------
+let authToken = localStorage.getItem("signal_token") || null;
+let currentUser = null; // { id, name, email, plan }
+
+function authHeaders() {
+  return authToken ? { "Authorization": `Bearer ${authToken}` } : {};
+}
+
+function setSession(token, user) {
+  authToken = token;
+  currentUser = user;
+  localStorage.setItem("signal_token", token);
+  renderAuthArea();
+}
+
+function clearSession() {
+  authToken = null;
+  currentUser = null;
+  localStorage.removeItem("signal_token");
+  renderAuthArea();
+}
+
+const authArea = document.getElementById("authArea");
+const loginNavBtn = document.getElementById("loginNavBtn");
+const signupNavBtn = document.getElementById("signupNavBtn");
+
+function renderAuthArea() {
+  if (!currentUser) {
+    authArea.innerHTML = "";
+    authArea.appendChild(loginNavBtn);
+    authArea.appendChild(signupNavBtn);
+    return;
+  }
+  const plan = currentUser.plan || "free";
+  authArea.innerHTML = `
+    <div class="user-chip">
+      <span>${escapeHtml(currentUser.name)}</span>
+      <span class="plan-badge ${plan === "pro" ? "pro" : ""}">${plan}</span>
+    </div>
+    <button type="button" class="nav-btn ghost" id="logoutBtn">Log out</button>
+  `;
+  document.getElementById("logoutBtn").addEventListener("click", () => {
+    clearSession();
+  });
+}
+
+async function fetchCurrentUser() {
+  if (!authToken) return;
+  try {
+    const res = await fetch(`${API_BASE}/auth/me`, { headers: authHeaders() });
+    if (!res.ok) { clearSession(); return; }
+    currentUser = await res.json();
+    renderAuthArea();
+    updatePricingUI();
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+// --- Auth modal ---
+const authModal = document.getElementById("authModal");
+const authModalClose = document.getElementById("authModalClose");
+const loginPane = document.getElementById("loginPane");
+const signupPane = document.getElementById("signupPane");
+
+function openAuthModal(mode) {
+  authModal.hidden = false;
+  loginPane.hidden = mode !== "login";
+  signupPane.hidden = mode !== "signup";
+}
+function closeAuthModal() {
+  authModal.hidden = true;
+}
+
+loginNavBtn.addEventListener("click", () => openAuthModal("login"));
+signupNavBtn.addEventListener("click", () => openAuthModal("signup"));
+authModalClose.addEventListener("click", closeAuthModal);
+authModal.addEventListener("click", (e) => { if (e.target === authModal) closeAuthModal(); });
+
+document.getElementById("switchToSignup").addEventListener("click", () => openAuthModal("signup"));
+document.getElementById("switchToLogin").addEventListener("click", () => openAuthModal("login"));
+
+const loginStatus = document.getElementById("loginStatus");
+const signupStatus = document.getElementById("signupStatus");
+
+document.getElementById("loginSubmitBtn").addEventListener("click", async () => {
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  if (!email || !password) {
+    loginStatus.textContent = "Enter your email and password.";
+    loginStatus.classList.add("error");
+    return;
+  }
+  loginStatus.classList.remove("error");
+  loginStatus.textContent = "Logging in...";
+  try {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Login failed");
+    setSession(data.token, data.user);
+    closeAuthModal();
+    loginStatus.textContent = "";
+    updatePricingUI();
+  } catch (err) {
+    loginStatus.textContent = err.message;
+    loginStatus.classList.add("error");
+  }
+});
+
+document.getElementById("signupSubmitBtn").addEventListener("click", async () => {
+  const name = document.getElementById("signupName").value.trim();
+  const email = document.getElementById("signupEmail").value.trim();
+  const password = document.getElementById("signupPassword").value;
+  if (!name || !email || !password) {
+    signupStatus.textContent = "Fill in all fields.";
+    signupStatus.classList.add("error");
+    return;
+  }
+  signupStatus.classList.remove("error");
+  signupStatus.textContent = "Creating account...";
+  try {
+    const res = await fetch(`${API_BASE}/auth/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Sign up failed");
+    setSession(data.token, data.user);
+    closeAuthModal();
+    signupStatus.textContent = "";
+    updatePricingUI();
+  } catch (err) {
+    signupStatus.textContent = err.message;
+    signupStatus.classList.add("error");
+  }
+});
+
+// --- Pricing / mock subscription ---
+const pricingStatus = document.getElementById("pricingStatus");
+
+function updatePricingUI() {
+  const plan = currentUser ? (currentUser.plan || "free") : "free";
+  document.querySelectorAll(".subscribe-btn").forEach(btn => {
+    const btnPlan = btn.dataset.plan;
+    if (btnPlan === plan) {
+      btn.textContent = "Current plan";
+      btn.disabled = true;
+    } else if (btnPlan === "pro") {
+      btn.textContent = "Upgrade to Pro";
+      btn.disabled = false;
+    } else {
+      btn.textContent = "Downgrade to Free";
+      btn.disabled = false;
+    }
+  });
+}
+
+document.querySelectorAll(".subscribe-btn").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    if (!currentUser) {
+      pricingStatus.classList.remove("error");
+      pricingStatus.textContent = "Please log in first to choose a plan.";
+      openAuthModal("login");
+      return;
+    }
+    const plan = btn.dataset.plan;
+    pricingStatus.classList.remove("error");
+    pricingStatus.textContent = "Processing (mock checkout)...";
+    try {
+      const res = await fetch(`${API_BASE}/subscribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ plan }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not update plan");
+      currentUser.plan = data.plan;
+      renderAuthArea();
+      updatePricingUI();
+      pricingStatus.textContent = data.message || `You're now on the ${plan} plan.`;
+    } catch (err) {
+      pricingStatus.textContent = err.message;
+      pricingStatus.classList.add("error");
+    }
+  });
+});
+
+// init
+renderAuthArea();
+fetchCurrentUser();
+updatePricingUI();
+
+// ---------------------------------------------------------------------------
+// Resume scanner
+// ---------------------------------------------------------------------------
 const resumeText = document.getElementById("resumeText");
 const filenameInput = document.getElementById("filename");
 const scanBtn = document.getElementById("scanBtn");
@@ -70,7 +274,7 @@ async function runScan() {
   try {
     const uploadRes = await fetch(`${API_BASE}/resumes`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({
         filename: filenameInput.value.trim() || "resume.txt",
         text,
@@ -106,6 +310,7 @@ async function uploadResumeFile(file) {
   try {
     const res = await fetch(`${API_BASE}/resumes/upload-file`, {
       method: "POST",
+      headers: { ...authHeaders() },
       body: formData,
     });
     const data = await res.json();

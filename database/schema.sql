@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS users (
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
+    plan TEXT DEFAULT 'free',           -- 'free' or 'pro' (mock subscription)
+    plan_started_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
