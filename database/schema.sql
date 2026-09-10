@@ -26,8 +26,44 @@ CREATE TABLE IF NOT EXISTS jobs (
     company TEXT NOT NULL,
     description TEXT NOT NULL,
     required_skills TEXT NOT NULL,  -- JSON array of skills, stored as text
+    preferred_skills TEXT DEFAULT '[]', -- JSON array, "nice to have" skills
     location TEXT,
+    logo_emoji TEXT DEFAULT '🏢',
+    salary_min INTEGER,
+    salary_max INTEGER,
+    currency TEXT DEFAULT 'MYR',
+    employment_type TEXT,           -- e.g. Full-time, Part-time, Contract
+    experience_required TEXT,       -- free-text range, e.g. "2-4 years"
+    education_required TEXT,        -- free-text, e.g. "Degree"
+    industry TEXT,
+    application_url TEXT,
+    source TEXT,                    -- where the listing came from
+    posted_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    closing_date TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS saved_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    job_id INTEGER NOT NULL,
+    saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, job_id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (job_id) REFERENCES jobs(id)
+);
+
+CREATE TABLE IF NOT EXISTS applications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    job_id INTEGER NOT NULL,
+    resume_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'saved', -- saved, applied, screening, interview, offer, rejected
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (job_id) REFERENCES jobs(id),
+    FOREIGN KEY (resume_id) REFERENCES resumes(id)
 );
 
 CREATE TABLE IF NOT EXISTS matches (

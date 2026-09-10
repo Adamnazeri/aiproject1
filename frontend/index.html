@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SIGNAL — AI Resume Matcher</title>
+<title>ResumeMaker — AI Resume Matcher</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
@@ -13,10 +13,16 @@
 <header class="topbar">
   <div class="topbar-left">
     <div class="logo">
-      <span class="logo-mark">◈</span>
-      <span>SIGNAL</span>
+      <svg class="logo-icon" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle class="logo-icon-ring" cx="17" cy="17" r="13" stroke-width="3" stroke-linecap="round" stroke-dasharray="64 17" transform="rotate(-40 17 17)"/>
+        <path class="logo-icon-check" d="M10.5 17.5L14.5 21.5L24 11" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="logo-text">
+        <span class="logo-wordmark"><span class="logo-word-a">Resume</span><span class="logo-word-b">Maker</span></span>
+        <span class="logo-tagline">CREATE. APPLY. GET HIRED.</span>
+      </div>
     </div>
-    <div class="topbar-sub">resume &rarr; job frequency matcher</div>
+    <span class="ai-badge">AI-powered</span>
   </div>
   <div class="topbar-right" id="authArea">
     <button type="button" class="nav-btn ghost" id="loginNavBtn">Log in</button>
@@ -25,79 +31,161 @@
 </header>
 
 <main>
-  <section class="builder section-animate">
-    <p class="eyebrow">// 00 — BUILD RESUME</p>
-    <h2 class="builder-title">Don't have a resume yet? Build one here.</h2>
-    <p class="hero-copy">Fill in your details below and generate a clean, ready-to-use resume — then send it straight into the scanner.</p>
+  <section class="builder-section reveal">
+    <div class="builder-header">
+      <p class="eyebrow reveal-child" style="--reveal-delay:0ms">// 00 — BUILD RESUME</p>
+      <h2 class="builder-title reveal-child" style="--reveal-delay:70ms">Build your resume</h2>
+      <p class="hero-copy reveal-child" style="--reveal-delay:140ms">Create a professional, ATS-friendly resume with ResumeMaker — the preview on the right updates as you type. When you're done, send it straight into the scanner below.</p>
 
-    <div class="builder-grid">
-      <input id="bFullName" type="text" placeholder="Full name" />
-      <input id="bEmail" type="text" placeholder="Email" />
-      <input id="bPhone" type="text" placeholder="Phone number" />
-      <input id="bTargetRole" type="text" placeholder="Target role (optional)" />
-    </div>
-
-    <textarea id="bSummary" class="builder-textarea" placeholder="Short summary / objective — 2-3 sentences about yourself"></textarea>
-    <input id="bSkills" type="text" placeholder="Skills, comma-separated — e.g. python, excel, customer service" />
-
-    <p class="section-label">Your Photo (optional)</p>
-    <div class="photo-upload-row">
-      <div id="photoPreview" class="photo-preview">No photo</div>
-      <div>
-        <input type="file" id="bPhoto" accept="image/*" />
-        <button type="button" id="removePhotoBtn" class="secondary-btn" style="margin-top: 0.5rem;">Remove photo</button>
+      <div class="progress-track reveal-child" style="--reveal-delay:210ms" aria-label="Resume completion progress">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+        <span class="progress-label" id="progressLabel">0% complete</span>
       </div>
     </div>
 
-    <p class="section-label">Choose a Template</p>
-    <div class="template-picker" id="templatePicker">
-      <div class="template-option selected" data-template="minimal">
-        <div class="template-thumb template-thumb-minimal"></div>
-        <span>Minimal</span>
-      </div>
-      <div class="template-option" data-template="sidebar">
-        <div class="template-thumb template-thumb-sidebar"></div>
-        <span>Sidebar</span>
-      </div>
-      <div class="template-option" data-template="bold">
-        <div class="template-thumb template-thumb-bold"></div>
-        <span>Bold Header</span>
-      </div>
-    </div>
+    <div class="builder-layout">
+      <div class="builder-form">
 
-    <p class="section-label">Work Experience</p>
-    <div id="experienceList" class="dynamic-list"></div>
-    <button type="button" id="addExperienceBtn" class="secondary-btn">+ Add work experience</button>
+        <div class="form-step">
+          <div class="step-head">
+            <span class="step-num">1</span>
+            <div>
+              <h3>Personal Information</h3>
+              <p>Your name and how employers can reach you.</p>
+            </div>
+          </div>
+          <div class="builder-grid">
+            <div class="field">
+              <label for="bFullName">Full name</label>
+              <input id="bFullName" type="text" placeholder="e.g. Adam Rahman" />
+            </div>
+            <div class="field">
+              <label for="bEmail">Email</label>
+              <input id="bEmail" type="text" placeholder="e.g. adam@email.com" />
+            </div>
+            <div class="field">
+              <label for="bPhone">Phone number</label>
+              <input id="bPhone" type="text" placeholder="e.g. 012-345 6789" />
+            </div>
+            <div class="field">
+              <label for="bTargetRole">Target role</label>
+              <input id="bTargetRole" type="text" placeholder="e.g. Software Engineer (optional)" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="bSummary">Summary</label>
+            <textarea id="bSummary" class="builder-textarea" placeholder="2–3 sentences about yourself"></textarea>
+          </div>
+          <div class="field">
+            <label for="bSkills">Skills</label>
+            <input id="bSkills" type="text" placeholder="Comma-separated — e.g. python, excel, customer service" />
+          </div>
+        </div>
 
-    <p class="section-label">Education</p>
-    <div id="educationList" class="dynamic-list"></div>
-    <button type="button" id="addEducationBtn" class="secondary-btn">+ Add education</button>
+        <div class="form-step">
+          <div class="step-head">
+            <span class="step-num">2</span>
+            <div>
+              <h3>Profile Photo</h3>
+              <p>Optional — shown on the Sidebar and Bold Header templates.</p>
+            </div>
+          </div>
+          <div class="photo-upload-row">
+            <div id="photoPreview" class="photo-preview">No photo</div>
+            <div>
+              <label for="bPhoto" class="secondary-btn file-label">Upload photo</label>
+              <input type="file" id="bPhoto" accept="image/*" hidden />
+              <button type="button" id="removePhotoBtn" class="secondary-btn" style="margin-left:0.5rem;">Remove</button>
+            </div>
+          </div>
+        </div>
 
-    <div class="input-row" style="margin-top: 1.5rem;">
-      <button id="generateBtn">
-        <span class="btn-label">GENERATE RESUME</span>
-        <span class="btn-arrow">→</span>
-      </button>
-    </div>
-    <p id="builderStatus" class="status-msg"></p>
+        <div class="form-step">
+          <div class="step-head">
+            <span class="step-num">3</span>
+            <div>
+              <h3>Resume Style</h3>
+              <p>Pick a layout — the preview updates instantly.</p>
+            </div>
+          </div>
+          <div class="template-picker" id="templatePicker" role="radiogroup" aria-label="Resume template">
+            <button type="button" class="template-option selected" data-template="minimal" role="radio" aria-checked="true">
+              <div class="template-thumb template-thumb-minimal"></div>
+              <span>Minimal</span>
+            </button>
+            <button type="button" class="template-option" data-template="sidebar" role="radio" aria-checked="false">
+              <div class="template-thumb template-thumb-sidebar"></div>
+              <span>Sidebar</span>
+            </button>
+            <button type="button" class="template-option" data-template="bold" role="radio" aria-checked="false">
+              <div class="template-thumb template-thumb-bold"></div>
+              <span>Bold Header</span>
+            </button>
+          </div>
+        </div>
 
-    <div id="generatedPreview" hidden>
-      <p class="eyebrow" style="margin-top: 2rem;">// GENERATED RESUME</p>
-      <div id="resumeVisual" class="resume-visual-wrap"></div>
-      <div class="input-row">
-        <button type="button" id="useForScanBtn" class="secondary-btn">Use this to scan jobs ↓</button>
-        <button type="button" id="downloadPdfBtn" class="secondary-btn">Download / Print as PDF</button>
-        <button type="button" id="downloadBtn" class="secondary-btn">Download plain .txt</button>
+        <div class="form-step">
+          <div class="step-head">
+            <span class="step-num">4</span>
+            <div>
+              <h3>Work Experience</h3>
+              <p>Add roles in reverse-chronological order.</p>
+            </div>
+          </div>
+          <div id="experienceList" class="dynamic-list"></div>
+          <p id="experienceEmpty" class="empty-state">No work experience added yet.</p>
+          <button type="button" id="addExperienceBtn" class="secondary-btn">+ Add work experience</button>
+        </div>
+
+        <div class="form-step">
+          <div class="step-head">
+            <span class="step-num">5</span>
+            <div>
+              <h3>Education</h3>
+              <p>Your qualifications, most recent first.</p>
+            </div>
+          </div>
+          <div id="educationList" class="dynamic-list"></div>
+          <p id="educationEmpty" class="empty-state">No education added yet.</p>
+          <button type="button" id="addEducationBtn" class="secondary-btn">+ Add education</button>
+        </div>
+
+        <div class="builder-cta">
+          <button id="generateBtn" class="cta-btn">
+            <span class="btn-label">Generate Resume</span>
+            <span class="btn-arrow">→</span>
+          </button>
+          <p id="builderStatus" class="status-msg"></p>
+        </div>
       </div>
+
+      <aside class="builder-preview-panel">
+        <div class="preview-sticky">
+          <div class="preview-panel-head">
+            <span class="eyebrow" style="margin:0;">Live Preview</span>
+            <span class="ai-badge">AI-powered</span>
+          </div>
+          <div id="resumeVisual" class="resume-visual-wrap">
+            <div class="preview-placeholder">Start filling the form on the left — your resume builds itself here.</div>
+          </div>
+          <div class="preview-actions" id="generatedPreview">
+            <button type="button" id="useForScanBtn" class="secondary-btn" disabled>Use this to scan jobs ↓</button>
+            <button type="button" id="saveToHistoryBtn" class="secondary-btn" disabled>💾 Save to My Resumes</button>
+            <button type="button" id="downloadPdfBtn" class="secondary-btn" disabled>Download / Print PDF</button>
+            <button type="button" id="downloadBtn" class="secondary-btn" disabled>Download .txt</button>
+          </div>
+          <p id="saveToHistoryStatus" class="status-msg"></p>
+        </div>
+      </aside>
     </div>
   </section>
 
-  <section class="hero section-animate">
-    <p class="eyebrow">// 01 — INPUT</p>
-    <h1>Paste your resume.<br>Read the signal.</h1>
-    <p class="hero-copy">Drop your resume text in below. The engine extracts your skill signature — across tech, business, healthcare, hospitality, education, and more — and tunes it against every open role in the database. No guesswork, just a ranked frequency match.</p>
+  <section class="hero reveal narrow">
+    <p class="eyebrow reveal-child" style="--reveal-delay:0ms">// 01 — INPUT</p>
+    <h1 class="reveal-child" style="--reveal-delay:70ms">Paste your resume.<br>Find your match.</h1>
+    <p class="hero-copy reveal-child" style="--reveal-delay:150ms">Drop your resume text in below. The engine extracts your skill signature — across tech, business, healthcare, hospitality, education, and more — and tunes it against every open role in the database. No guesswork, just a ranked frequency match.</p>
 
-    <textarea id="resumeText" placeholder="Paste your resume text here'"></textarea>
+    <textarea id="resumeText" class="reveal-child" style="--reveal-delay:220ms" placeholder="Paste your resume text here'"></textarea>
 
     <div class="file-upload-row">
       <label for="resumeFileInput" class="secondary-btn file-label">📄 Upload resume file (.txt, .pdf, .docx)</label>
@@ -115,7 +203,7 @@
     <p id="statusMsg" class="status-msg"></p>
   </section>
 
-  <section class="results" id="resultsSection" hidden>
+  <section class="results reveal narrow" id="resultsSection" hidden>
     <p class="eyebrow">// 02 — DETECTED SIGNATURE</p>
     <div id="skillTags" class="skill-tags"></div>
 
@@ -124,7 +212,7 @@
     <div id="matchList" class="match-list"></div>
   </section>
 
-  <section class="assistant">
+  <section class="assistant reveal narrow">
     <p class="eyebrow">// 05 — ASK THE ASSISTANT</p>
     <h2 class="builder-title">Career AI Assistant</h2>
     <p class="hero-copy">Ask about your resume, your scan results, or how to close the gap on a job you're eyeing — it sees your current resume and match results.</p>
@@ -141,7 +229,7 @@
     <p id="chatStatus" class="status-msg"></p>
   </section>
 
-  <section class="pricing">
+  <section class="pricing reveal narrow">
     <p class="eyebrow">// 06 — PLANS</p>
     <h2 class="builder-title">Simple, transparent pricing</h2>
     <p class="hero-copy">This is a demo checkout — no real card is charged. Wire in Stripe (or your gateway of choice) later without changing the frontend.</p>
@@ -150,21 +238,29 @@
       <div class="plan-card" data-plan="free">
         <div class="plan-name">Free</div>
         <div class="plan-price">RM0 <span>/ month</span></div>
+        <p class="plan-tagline">Understand your resume and see your basic matches.</p>
         <ul class="plan-features">
           <li>Unlimited resume scans</li>
-          <li>Resume builder (3 templates)</li>
+          <li>Resume builder — 3 templates</li>
           <li>Basic skill matching</li>
+          <li>Overall match score</li>
+          <li>Limited saved jobs</li>
         </ul>
-        <button type="button" class="secondary-btn subscribe-btn" data-plan="free">Current plan</button>
+        <button type="button" class="secondary-btn subscribe-btn" data-plan="free">Get Started</button>
       </div>
       <div class="plan-card featured" data-plan="pro">
         <div class="plan-name">Pro</div>
         <div class="plan-price">RM19 <span>/ month</span></div>
+        <p class="plan-tagline">Actually improve your applications and job search.</p>
         <ul class="plan-features">
           <li>Everything in Free</li>
-          <li>Unlimited AI Assistant chats</li>
-          <li>Saved resume history</li>
+          <li>Full match breakdown — Skill &amp; Domain Match</li>
+          <li>Full skill-gap analysis</li>
+          <li>Unlimited AI Assistant</li>
+          <li>Unlimited resume history</li>
+          <li>Application tracker</li>
           <li>Priority match refresh</li>
+          <li>Premium templates (coming soon)</li>
         </ul>
         <button type="button" class="primary-btn subscribe-btn" data-plan="pro">Upgrade to Pro</button>
         <p class="plan-note">Mock checkout — replace with a real gateway when ready.</p>
@@ -177,6 +273,54 @@
 <footer>
   <span>Built with Python · FastAPI · SQLite · vanilla JS</span>
 </footer>
+
+<!-- Dashboard modal -->
+<div class="modal-overlay" id="dashboardModal" hidden>
+  <div class="modal-card modal-card-wide">
+    <button type="button" class="modal-close" id="dashboardModalClose">✕</button>
+
+    <p class="eyebrow" style="margin:0 0 0.3rem;">// DASHBOARD</p>
+    <h3 class="modal-title">Welcome back<span id="dashboardName"></span></h3>
+
+    <div class="dashboard-grid">
+      <div class="dashboard-tile">
+        <span class="dashboard-tile-label">Resume Score</span>
+        <span class="dashboard-tile-value" id="statResumeScore">0<small>/100</small></span>
+      </div>
+      <div class="dashboard-tile">
+        <span class="dashboard-tile-label">Jobs Matched</span>
+        <span class="dashboard-tile-value" id="statJobsMatched">0</span>
+      </div>
+      <div class="dashboard-tile">
+        <span class="dashboard-tile-label">Saved Jobs</span>
+        <span class="dashboard-tile-value" id="statSavedJobs">0</span>
+      </div>
+      <div class="dashboard-tile">
+        <span class="dashboard-tile-label">Applications</span>
+        <span class="dashboard-tile-value" id="statApplications">0</span>
+      </div>
+      <div class="dashboard-tile">
+        <span class="dashboard-tile-label">Interviews</span>
+        <span class="dashboard-tile-value" id="statInterviews">0</span>
+      </div>
+    </div>
+
+    <div class="dashboard-panels">
+      <div class="dashboard-panel">
+        <div class="dashboard-panel-head">
+          <span class="dashboard-panel-title">Resume History</span>
+        </div>
+        <div id="resumeHistoryList" class="dashboard-panel-body"></div>
+      </div>
+      <div class="dashboard-panel">
+        <div class="dashboard-panel-head">
+          <span class="dashboard-panel-title">Application Tracker</span>
+        </div>
+        <div id="applicationTrackerList" class="dashboard-panel-body"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Auth modal (login / signup) -->
 <div class="modal-overlay" id="authModal" hidden>
