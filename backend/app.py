@@ -18,7 +18,7 @@ import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import pypdf
@@ -30,7 +30,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, "database", "app.db")
 FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
 
-app = FastAPI(title="SIGNAL — AI Resume Matcher")
+app = FastAPI(title="ResumeMaker — AI Resume Matcher")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -273,10 +273,18 @@ def extract_skills(text: str) -> list[str]:
 
 
 def compute_match(resume_skills: list[str], job_skills: list[str]) -> dict:
-    """Exact skill matches count fully. A skill the resume doesn't have
-    but that shares a category with something the resume DOES have counts
-    as a "related" partial match — this is what makes cross-industry
-    resumes score fairly instead of hitting a hard 0%."""
+    """Multi-factor match score, built only from signals that actually exist
+    in the data (resume skills vs. job's required skills) — no fabricated
+    experience/education/seniority claims, since the current pipeline
+    doesn't extract those as structured fields yet.
+
+    Skill Match  — exact skill overlap, weighted.
+    Domain Match — category overlap (e.g. resume is "Tech/IT" heavy and the
+                   job's unmatched skills still fall in a category the
+                   resume already touches) — this is what makes cross-field
+                   resumes score fairly instead of a hard 0%, and is exposed
+                   as its own line in the breakdown rather than hidden.
+    """
     resume_set = set(resume_skills)
     job_set = set(job_skills)
 
@@ -291,19 +299,35 @@ def compute_match(resume_skills: list[str], job_skills: list[str]) -> dict:
         else:
             fully_missing.append(job_skill)
 
-    EXACT_WEIGHT, RELATED_WEIGHT = 1.0, 0.3
     total = len(job_set)
     if total:
+        skill_match_pct = round(len(exact_matched) / total * 100, 1)
+        domain_match_pct = round(min(len(exact_matched) + len(related), total) / total * 100, 1)
+        EXACT_WEIGHT, RELATED_WEIGHT = 1.0, 0.3
         weighted = len(exact_matched) * EXACT_WEIGHT + len(related) * RELATED_WEIGHT
-        score = round(min(weighted / total, 1.0) * 100, 1)
+        overall_score = round(min(weighted / total, 1.0) * 100, 1)
     else:
-        score = 0.0
+        skill_match_pct = domain_match_pct = overall_score = 0.0
+
+    if overall_score >= 80:
+        recommendation = "Strong match — you should apply."
+    elif overall_score >= 55:
+        recommendation = "Good match — worth applying, but consider closing a few skill gaps first."
+    elif overall_score >= 30:
+        recommendation = "Partial match — you meet some requirements, but this role may be a stretch."
+    else:
+        recommendation = "Low match — your current skill set doesn't line up well with this role yet."
 
     return {
-        "score": score,
+        "score": overall_score,
+        "breakdown": {
+            "skill_match": skill_match_pct,
+            "domain_match": domain_match_pct,
+        },
         "matched_skills": exact_matched,
         "related_skills": related,
         "missing_skills": fully_missing,
+        "recommendation": recommendation,
     }
 
 
@@ -313,20 +337,228 @@ def get_db():
     return conn
 
 
+# ---------------------------------------------------------------------------
+# Centralized Free/Pro entitlements — checked server-side, never trusted from
+# the frontend. Add a feature name here once and gate any endpoint with
+# `require_feature(user_id, "feature_name")` instead of scattering plan
+# checks around the codebase.
+# ---------------------------------------------------------------------------
+PLAN_FEATURES = {
+    "free": {
+        "basic_matching",
+    },
+    "pro": {
+        "basic_matching",
+        "advanced_matching",       # full score breakdown + full skill-gap list
+        "ai_assistant_unlimited",
+        "resume_history",
+        "application_tracker",
+        "priority_refresh",
+        "unlimited_saved_jobs",
+    },
+}
+
+
+def get_user_plan(user_id):
+    if user_id is None:
+        return "free"
+    conn = get_db()
+    row = conn.execute("SELECT plan FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return (row["plan"] if row else "free") or "free"
+
+
+def has_feature(user_id, feature: str) -> bool:
+    plan = get_user_plan(user_id)
+    return feature in PLAN_FEATURES.get(plan, PLAN_FEATURES["free"])
+
+
+# Numeric caps for Free plan — used alongside the boolean PLAN_FEATURES flags
+# above for things that are "limited" rather than fully on/off.
+FREE_LIMITS = {
+    "saved_jobs": 5,
+    "ai_assistant_daily": 10,
+    "resume_history": 3,
+    "match_refresh_cooldown_seconds": 300,  # 5 minutes
+}
+
+
+def pro_required_response(feature: str, message: str, status_code: int = 403) -> JSONResponse:
+    """Standard shape for every plan-gated denial, so the frontend can handle
+    all of them with one generic handler instead of parsing different error
+    strings per endpoint."""
+    return JSONResponse(status_code=status_code, content={
+        "error": "pro_required", "feature": feature, "message": message,
+    })
+
+
+def require_feature(user_id, feature: str, message: str):
+    """Returns a JSONResponse to send back immediately if the user's plan
+    doesn't include `feature`, or None if they're allowed to proceed.
+    Usage: `denial = require_feature(user_id, "application_tracker", "...")`
+           `if denial: return denial`"""
+    if not has_feature(user_id, feature):
+        return pro_required_response(feature, message)
+    return None
+
+
+DEMO_JOBS = [
+    {
+        "title": "Operations Manager", "company": "Meridian Logistics", "logo_emoji": "📦",
+        "description": "Oversee daily warehouse and fleet operations, manage a team of 15, and drive process improvements across the supply chain.",
+        "required_skills": ["operations management", "team leadership", "logistics", "inventory management", "communication"],
+        "preferred_skills": ["excel", "sap"],
+        "location": "Petaling Jaya, Selangor", "salary_min": 5500, "salary_max": 7500, "currency": "MYR",
+        "employment_type": "Full-time", "experience_required": "3-5 years", "education_required": "Diploma or Degree",
+        "industry": "Logistics / Supply Chain", "application_url": "", "source": "ResumeMaker Demo Listing",
+    },
+    {
+        "title": "Project Manager", "company": "Northbridge Consulting", "logo_emoji": "📋",
+        "description": "Lead cross-functional project teams from planning through delivery for enterprise clients.",
+        "required_skills": ["project management", "communication", "leadership", "budgeting", "microsoft office"],
+        "preferred_skills": ["agile", "power bi"],
+        "location": "Kuala Lumpur", "salary_min": 6000, "salary_max": 9000, "currency": "MYR",
+        "employment_type": "Full-time", "experience_required": "4-6 years", "education_required": "Degree",
+        "industry": "Professional Services", "application_url": "", "source": "ResumeMaker Demo Listing",
+    },
+    {
+        "title": "Software Engineer (Backend)", "company": "Pulsewave Technologies", "logo_emoji": "💻",
+        "description": "Build and maintain REST APIs and services powering our core product, working closely with product and data teams.",
+        "required_skills": ["python", "fastapi", "sql", "git", "rest api"],
+        "preferred_skills": ["docker", "aws"],
+        "location": "Remote (Malaysia)", "salary_min": 6500, "salary_max": 11000, "currency": "MYR",
+        "employment_type": "Full-time", "experience_required": "2-4 years", "education_required": "Degree",
+        "industry": "Technology", "application_url": "", "source": "ResumeMaker Demo Listing",
+    },
+    {
+        "title": "Customer Service Executive", "company": "Harbor Retail Group", "logo_emoji": "🎧",
+        "description": "Handle customer inquiries across phone, chat and email, and resolve complaints in line with SLA targets.",
+        "required_skills": ["customer service", "communication", "problem solving", "crm"],
+        "preferred_skills": ["salesforce"],
+        "location": "Johor Bahru, Johor", "salary_min": 2500, "salary_max": 3500, "currency": "MYR",
+        "employment_type": "Full-time", "experience_required": "0-2 years", "education_required": "SPM or Diploma",
+        "industry": "Retail", "application_url": "", "source": "ResumeMaker Demo Listing",
+    },
+    {
+        "title": "Digital Marketing Executive", "company": "Brightleaf Media", "logo_emoji": "📣",
+        "description": "Plan and run paid and organic campaigns across social platforms, and report on performance to clients.",
+        "required_skills": ["digital marketing", "seo", "social media marketing", "content creation", "google analytics"],
+        "preferred_skills": ["email marketing", "copywriting"],
+        "location": "Penang", "salary_min": 3000, "salary_max": 4800, "currency": "MYR",
+        "employment_type": "Full-time", "experience_required": "1-3 years", "education_required": "Diploma or Degree",
+        "industry": "Marketing / Advertising", "application_url": "", "source": "ResumeMaker Demo Listing",
+    },
+    {
+        "title": "Business Executive", "company": "Meridian Logistics", "logo_emoji": "📈",
+        "description": "Support business development, prepare proposals, and coordinate with operations to onboard new accounts.",
+        "required_skills": ["sales", "negotiation", "communication", "market research", "excel"],
+        "preferred_skills": ["crm", "financial analysis"],
+        "location": "Petaling Jaya, Selangor", "salary_min": 3500, "salary_max": 5000, "currency": "MYR",
+        "employment_type": "Full-time", "experience_required": "1-3 years", "education_required": "Degree",
+        "industry": "Logistics / Supply Chain", "application_url": "", "source": "ResumeMaker Demo Listing",
+    },
+]
+
+
 def ensure_schema_upgrades():
-    """Adds new columns to an already-existing database without wiping data.
-    Safe to run every startup — each ALTER is skipped if the column exists."""
+    """Adds new columns/tables to an already-existing database without
+    wiping data. Safe to run every startup — each change is skipped if it
+    already exists."""
     if not os.path.exists(DB_PATH):
         return
     conn = sqlite3.connect(DB_PATH)
-    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
-    upgrades = {
+
+    users_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    user_upgrades = {
         "plan": "ALTER TABLE users ADD COLUMN plan TEXT DEFAULT 'free'",
         "plan_started_at": "ALTER TABLE users ADD COLUMN plan_started_at TIMESTAMP",
     }
-    for col, stmt in upgrades.items():
-        if col not in existing_cols:
+    for col, stmt in user_upgrades.items():
+        if col not in users_cols:
             conn.execute(stmt)
+
+    jobs_cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+    job_upgrades = {
+        "logo_emoji": "ALTER TABLE jobs ADD COLUMN logo_emoji TEXT DEFAULT '🏢'",
+        "preferred_skills": "ALTER TABLE jobs ADD COLUMN preferred_skills TEXT DEFAULT '[]'",
+        "salary_min": "ALTER TABLE jobs ADD COLUMN salary_min INTEGER",
+        "salary_max": "ALTER TABLE jobs ADD COLUMN salary_max INTEGER",
+        "currency": "ALTER TABLE jobs ADD COLUMN currency TEXT DEFAULT 'MYR'",
+        "employment_type": "ALTER TABLE jobs ADD COLUMN employment_type TEXT",
+        "experience_required": "ALTER TABLE jobs ADD COLUMN experience_required TEXT",
+        "education_required": "ALTER TABLE jobs ADD COLUMN education_required TEXT",
+        "industry": "ALTER TABLE jobs ADD COLUMN industry TEXT",
+        "application_url": "ALTER TABLE jobs ADD COLUMN application_url TEXT",
+        "source": "ALTER TABLE jobs ADD COLUMN source TEXT",
+        "posted_date": "ALTER TABLE jobs ADD COLUMN posted_date TIMESTAMP",
+        "closing_date": "ALTER TABLE jobs ADD COLUMN closing_date TIMESTAMP",
+    }
+    for col, stmt in job_upgrades.items():
+        if col not in jobs_cols:
+            conn.execute(stmt)
+            if col == "posted_date":
+                # SQLite won't allow DEFAULT CURRENT_TIMESTAMP directly in
+                # ALTER TABLE ADD COLUMN ("non-constant default"), so the
+                # column above is added plain, then backfilled here instead.
+                conn.execute("UPDATE jobs SET posted_date = CURRENT_TIMESTAMP WHERE posted_date IS NULL")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS saved_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            job_id INTEGER NOT NULL,
+            saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, job_id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS applications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            job_id INTEGER NOT NULL,
+            resume_id INTEGER,
+            status TEXT NOT NULL DEFAULT 'saved',  -- saved, applied, screening, interview, offer, rejected
+            applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ai_usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            usage_date TEXT NOT NULL,   -- 'YYYY-MM-DD', server date
+            count INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(user_id, usage_date)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS match_refresh_log (
+            user_id INTEGER PRIMARY KEY,
+            last_refreshed_at TIMESTAMP NOT NULL
+        )
+    """)
+
+    # Backfill a small set of realistic demo jobs if the jobs table is empty,
+    # so matching/dashboard/tracker all have something real to work with.
+    job_count = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+    if job_count == 0:
+        for job in DEMO_JOBS:
+            conn.execute(
+                """INSERT INTO jobs
+                   (title, company, description, required_skills, location, logo_emoji,
+                    preferred_skills, salary_min, salary_max, currency, employment_type,
+                    experience_required, education_required, industry, application_url, source,
+                    posted_date)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
+                (
+                    job["title"], job["company"], job["description"], json.dumps(job["required_skills"]),
+                    job["location"], job["logo_emoji"], json.dumps(job["preferred_skills"]),
+                    job["salary_min"], job["salary_max"], job["currency"], job["employment_type"],
+                    job["experience_required"], job["education_required"], job["industry"],
+                    job["application_url"], job["source"],
+                ),
+            )
+
     conn.commit()
     conn.close()
 
@@ -488,6 +720,23 @@ class SubscribeRequest(BaseModel):
     plan: str  # "free" | "pro"
 
 
+class SaveJobRequest(BaseModel):
+    job_id: int
+
+
+class ApplicationRequest(BaseModel):
+    job_id: int
+    resume_id: int | None = None
+    status: str = "applied"
+
+
+class ApplicationStatusUpdate(BaseModel):
+    status: str  # saved, applied, screening, interview, offer, rejected
+
+
+VALID_APPLICATION_STATUSES = {"saved", "applied", "screening", "interview", "offer", "rejected"}
+
+
 # ---------------------------------------------------------------------------
 # Auth routes
 # ---------------------------------------------------------------------------
@@ -591,6 +840,7 @@ def list_jobs():
     for row in rows:
         job = dict(row)
         job["required_skills"] = json.loads(job["required_skills"])
+        job["preferred_skills"] = json.loads(job.get("preferred_skills") or "[]")
         jobs.append(job)
     return jobs
 
@@ -606,6 +856,111 @@ def generate_resume(payload: GenerateResumeRequest):
     detected_skills = extract_skills(resume_text)
 
     return {"resume_text": resume_text, "detected_skills": detected_skills}
+
+
+@app.get("/api/resumes")
+def list_my_resumes(authorization: str = Header(None)):
+    """Resume history. Free plan only sees the most recent
+    FREE_LIMITS["resume_history"] resumes; Pro sees everything. This doesn't
+    limit scanning itself (that stays unlimited on Free) — only how much of
+    the saved history is browsable."""
+    user_id = get_current_user_id(authorization)
+    if user_id is None:
+        return JSONResponse(status_code=401, content={"error": "Please log in first"})
+
+    conn = get_db()
+    total_count = conn.execute("SELECT COUNT(*) FROM resumes WHERE user_id = ?", (user_id,)).fetchone()[0]
+
+    is_unlimited = has_feature(user_id, "resume_history")
+    limit = None if is_unlimited else FREE_LIMITS["resume_history"]
+
+    query = "SELECT id, filename, extracted_skills, uploaded_at FROM resumes WHERE user_id = ? ORDER BY uploaded_at DESC"
+    params = (user_id,)
+    if limit is not None:
+        query += " LIMIT ?"
+        params = (user_id, limit)
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    resumes = [{
+        "id": r["id"], "filename": r["filename"], "uploaded_at": r["uploaded_at"],
+        "skill_count": len(json.loads(r["extracted_skills"] or "[]")),
+    } for r in rows]
+
+    return {
+        "resumes": resumes,
+        "total_count": total_count,
+        "plan_limited": limit is not None and total_count > limit,
+        "locked_count": max(total_count - limit, 0) if limit is not None else 0,
+    }
+
+
+def get_resume_visible_ids(user_id: int, conn) -> set:
+    """IDs of this user's resumes that fall within their plan's history
+    window (most-recent-first, capped for Free). Download/delete both check
+    against this — the same window list_my_resumes() shows — so a Free user
+    can't reach an older, "locked" resume just by guessing/reusing its id in
+    a direct API call."""
+    is_unlimited = has_feature(user_id, "resume_history")
+    query = "SELECT id FROM resumes WHERE user_id = ? ORDER BY uploaded_at DESC"
+    params = (user_id,)
+    if not is_unlimited:
+        query += " LIMIT ?"
+        params = (user_id, FREE_LIMITS["resume_history"])
+    return {r["id"] for r in conn.execute(query, params).fetchall()}
+
+
+@app.get("/api/resumes/{resume_id}/download")
+def download_resume(resume_id: int, authorization: str = Header(None)):
+    user_id = get_current_user_id(authorization)
+    if user_id is None:
+        return JSONResponse(status_code=401, content={"error": "Please log in first"})
+
+    conn = get_db()
+    resume = conn.execute(
+        "SELECT * FROM resumes WHERE id = ? AND user_id = ?", (resume_id, user_id)
+    ).fetchone()
+    if resume is None:
+        conn.close()
+        return JSONResponse(status_code=404, content={"error": "Resume not found"})
+
+    if resume_id not in get_resume_visible_ids(user_id, conn):
+        conn.close()
+        return pro_required_response(
+            "resume_history",
+            "This resume is outside your Free plan's 3 most-recent saved resumes. Upgrade to Pro to access your full history.",
+        )
+    conn.close()
+
+    filename = resume["filename"] or f"resume-{resume_id}.txt"
+    if not filename.lower().endswith(".txt"):
+        filename += ".txt"
+
+    return Response(
+        content=resume["raw_text"],
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.delete("/api/resumes/{resume_id}")
+def delete_resume(resume_id: int, authorization: str = Header(None)):
+    user_id = get_current_user_id(authorization)
+    if user_id is None:
+        return JSONResponse(status_code=401, content={"error": "Please log in first"})
+
+    conn = get_db()
+    resume = conn.execute(
+        "SELECT id FROM resumes WHERE id = ? AND user_id = ?", (resume_id, user_id)
+    ).fetchone()
+    if resume is None:
+        conn.close()
+        return JSONResponse(status_code=404, content={"error": "Resume not found"})
+
+    conn.execute("DELETE FROM resumes WHERE id = ?", (resume_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "deleted", "id": resume_id}
 
 
 @app.post("/api/resumes")
@@ -667,12 +1022,33 @@ def upload_resume_file(file: UploadFile = File(...), authorization: str = Header
 
 
 @app.get("/api/match/{resume_id}")
-def match_resume_to_all_jobs(resume_id: int):
+def match_resume_to_all_jobs(resume_id: int, authorization: str = Header(None)):
+    user_id = get_current_user_id(authorization)
+    is_pro = has_feature(user_id, "advanced_matching")
+
     conn = get_db()
     resume = conn.execute("SELECT * FROM resumes WHERE id = ?", (resume_id,)).fetchone()
     if resume is None:
         conn.close()
         return JSONResponse(status_code=404, content={"error": "Resume not found"})
+
+    # Priority match refresh: Free (logged-in) users can only recompute
+    # matches once every FREE_LIMITS["match_refresh_cooldown_seconds"]; Pro
+    # bypasses this entirely. Guests (no account) aren't rate-limited here —
+    # there's no plan to enforce against an anonymous session.
+    if user_id is not None and not has_feature(user_id, "priority_refresh"):
+        row = conn.execute("SELECT last_refreshed_at FROM match_refresh_log WHERE user_id = ?", (user_id,)).fetchone()
+        if row is not None:
+            elapsed = time.time() - row["last_refreshed_at"]
+            cooldown = FREE_LIMITS["match_refresh_cooldown_seconds"]
+            if elapsed < cooldown:
+                conn.close()
+                wait = int(cooldown - elapsed)
+                return JSONResponse(status_code=429, content={
+                    "error": "pro_required", "feature": "priority_refresh",
+                    "message": f"Free plan can refresh matches every {cooldown // 60} minutes — Pro gets unlimited priority refresh.",
+                    "retry_after_seconds": wait,
+                })
 
     resume_skills = json.loads(resume["extracted_skills"])
     jobs = conn.execute("SELECT * FROM jobs ORDER BY id DESC").fetchall()
@@ -685,28 +1061,266 @@ def match_resume_to_all_jobs(resume_id: int):
             "INSERT INTO matches (resume_id, job_id, score, matched_skills, missing_skills) VALUES (?, ?, ?, ?, ?)",
             (resume_id, job["id"], match["score"], json.dumps(match["matched_skills"]), json.dumps(match["missing_skills"])),
         )
-        results.append({
+
+        result = {
             "job_id": job["id"],
             "title": job["title"],
+            "company": job["company"],
+            "logo_emoji": job["logo_emoji"] or "🏢",
             "location": job["location"],
+            "salary_min": job["salary_min"],
+            "salary_max": job["salary_max"],
+            "currency": job["currency"] or "MYR",
+            "employment_type": job["employment_type"],
+            "industry": job["industry"],
+            "application_url": job["application_url"],
             **match,
-        })
+        }
+
+        if not is_pro:
+            # Free plan: overall score + recommendation + a capped preview of
+            # matched/missing skills. Full breakdown + full lists are Pro.
+            result["matched_skills"] = result["matched_skills"][:5]
+            result["related_skills"] = result["related_skills"][:2]
+            result["missing_skills"] = result["missing_skills"][:3]
+            result["breakdown"] = None
+            result["pro_locked"] = True
+        else:
+            result["pro_locked"] = False
+
+        results.append(result)
+
+    if user_id is not None:
+        conn.execute(
+            "INSERT INTO match_refresh_log (user_id, last_refreshed_at) VALUES (?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET last_refreshed_at = excluded.last_refreshed_at",
+            (user_id, time.time()),
+        )
 
     conn.commit()
     conn.close()
 
     results.sort(key=lambda r: r["score"], reverse=True)
-    return {"resume_skills": resume_skills, "results": results}
+    return {"resume_skills": resume_skills, "results": results, "plan": "pro" if is_pro else "free"}
 
+
+# ---------------------------------------------------------------------------
+# Saved jobs
+# ---------------------------------------------------------------------------
+@app.get("/api/saved-jobs")
+def list_saved_jobs(authorization: str = Header(None)):
+    user_id = get_current_user_id(authorization)
+    if user_id is None:
+        return JSONResponse(status_code=401, content={"error": "Please log in first"})
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT saved_jobs.job_id, saved_jobs.saved_at, jobs.title, jobs.company, jobs.logo_emoji, jobs.location
+        FROM saved_jobs JOIN jobs ON jobs.id = saved_jobs.job_id
+        WHERE saved_jobs.user_id = ? ORDER BY saved_jobs.saved_at DESC
+    """, (user_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.post("/api/saved-jobs")
+def save_job(payload: SaveJobRequest, authorization: str = Header(None)):
+    user_id = get_current_user_id(authorization)
+    if user_id is None:
+        return JSONResponse(status_code=401, content={"error": "Please log in first"})
+    conn = get_db()
+    job = conn.execute("SELECT id FROM jobs WHERE id = ?", (payload.job_id,)).fetchone()
+    if job is None:
+        conn.close()
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+
+    if not has_feature(user_id, "unlimited_saved_jobs"):
+        current_count = conn.execute("SELECT COUNT(*) FROM saved_jobs WHERE user_id = ?", (user_id,)).fetchone()[0]
+        already_saved = conn.execute(
+            "SELECT 1 FROM saved_jobs WHERE user_id = ? AND job_id = ?", (user_id, payload.job_id)
+        ).fetchone()
+        limit = FREE_LIMITS["saved_jobs"]
+        if not already_saved and current_count >= limit:
+            conn.close()
+            return pro_required_response(
+                "unlimited_saved_jobs",
+                f"Free plan is limited to {limit} saved jobs — upgrade to Pro for unlimited saved jobs.",
+            )
+
+    conn.execute(
+        "INSERT OR IGNORE INTO saved_jobs (user_id, job_id) VALUES (?, ?)",
+        (user_id, payload.job_id),
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "saved", "job_id": payload.job_id}
+
+
+@app.delete("/api/saved-jobs/{job_id}")
+def unsave_job(job_id: int, authorization: str = Header(None)):
+    user_id = get_current_user_id(authorization)
+    if user_id is None:
+        return JSONResponse(status_code=401, content={"error": "Please log in first"})
+    conn = get_db()
+    conn.execute("DELETE FROM saved_jobs WHERE user_id = ? AND job_id = ?", (user_id, job_id))
+    conn.commit()
+    conn.close()
+    return {"status": "removed", "job_id": job_id}
+
+
+# ---------------------------------------------------------------------------
+# Application tracker — users can only ever see/modify their own rows
+# (every query below is scoped by user_id from the verified auth token).
+# ---------------------------------------------------------------------------
+@app.get("/api/applications")
+def list_applications(authorization: str = Header(None)):
+    user_id = get_current_user_id(authorization)
+    if user_id is None:
+        return JSONResponse(status_code=401, content={"error": "Please log in first"})
+    denial = require_feature(user_id, "application_tracker",
+                              "The application tracker is available on the Pro plan.")
+    if denial:
+        return denial
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT applications.id, applications.job_id, applications.resume_id, applications.status,
+               applications.applied_at, applications.updated_at,
+               jobs.title, jobs.company, jobs.logo_emoji
+        FROM applications JOIN jobs ON jobs.id = applications.job_id
+        WHERE applications.user_id = ? ORDER BY applications.updated_at DESC
+    """, (user_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.post("/api/applications")
+def create_application(payload: ApplicationRequest, authorization: str = Header(None)):
+    user_id = get_current_user_id(authorization)
+    if user_id is None:
+        return JSONResponse(status_code=401, content={"error": "Please log in first"})
+    denial = require_feature(user_id, "application_tracker",
+                              "The application tracker is available on the Pro plan.")
+    if denial:
+        return denial
+    if payload.status not in VALID_APPLICATION_STATUSES:
+        return JSONResponse(status_code=400, content={"error": "Invalid status"})
+
+    conn = get_db()
+    job = conn.execute("SELECT id FROM jobs WHERE id = ?", (payload.job_id,)).fetchone()
+    if job is None:
+        conn.close()
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+
+    # ownership check: if a resume_id is supplied, it must belong to this user
+    if payload.resume_id is not None:
+        resume = conn.execute("SELECT id FROM resumes WHERE id = ? AND user_id = ?", (payload.resume_id, user_id)).fetchone()
+        if resume is None:
+            conn.close()
+            return JSONResponse(status_code=403, content={"error": "That resume doesn't belong to you"})
+
+    cur = conn.execute(
+        "INSERT INTO applications (user_id, job_id, resume_id, status) VALUES (?, ?, ?, ?)",
+        (user_id, payload.job_id, payload.resume_id, payload.status),
+    )
+    conn.commit()
+    application_id = cur.lastrowid
+    conn.close()
+    return {"id": application_id, "status": payload.status}
+
+
+@app.patch("/api/applications/{application_id}")
+def update_application_status(application_id: int, payload: ApplicationStatusUpdate, authorization: str = Header(None)):
+    user_id = get_current_user_id(authorization)
+    if user_id is None:
+        return JSONResponse(status_code=401, content={"error": "Please log in first"})
+    denial = require_feature(user_id, "application_tracker",
+                              "The application tracker is available on the Pro plan.")
+    if denial:
+        return denial
+    if payload.status not in VALID_APPLICATION_STATUSES:
+        return JSONResponse(status_code=400, content={"error": "Invalid status"})
+
+    conn = get_db()
+    # ownership check — a user can only update their own application rows
+    owned = conn.execute(
+        "SELECT id FROM applications WHERE id = ? AND user_id = ?", (application_id, user_id)
+    ).fetchone()
+    if owned is None:
+        conn.close()
+        return JSONResponse(status_code=404, content={"error": "Application not found"})
+
+    conn.execute(
+        "UPDATE applications SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (payload.status, application_id),
+    )
+    conn.commit()
+    conn.close()
+    return {"id": application_id, "status": payload.status}
+
+
+# ---------------------------------------------------------------------------
+# Dashboard summary — small, fast aggregate query built entirely from the
+# user's own rows (auth required; every subquery is scoped to user_id).
+# ---------------------------------------------------------------------------
+@app.get("/api/dashboard")
+def dashboard_summary(authorization: str = Header(None)):
+    user_id = get_current_user_id(authorization)
+    if user_id is None:
+        return JSONResponse(status_code=401, content={"error": "Please log in first"})
+
+    conn = get_db()
+    latest_resume = conn.execute(
+        "SELECT id, extracted_skills FROM resumes WHERE user_id = ? ORDER BY uploaded_at DESC LIMIT 1", (user_id,)
+    ).fetchone()
+
+    resume_score = 0
+    jobs_matched = 0
+    if latest_resume:
+        resume_skills = json.loads(latest_resume["extracted_skills"])
+        jobs = conn.execute("SELECT required_skills FROM jobs").fetchall()
+        scores = []
+        for job in jobs:
+            job_skills = json.loads(job["required_skills"])
+            match = compute_match(resume_skills, job_skills)
+            scores.append(match["score"])
+            if match["score"] >= 40:
+                jobs_matched += 1
+        # Resume score out of 100: how well the resume performs against the
+        # best-fitting roles in the database (average of its top matches).
+        top_scores = sorted(scores, reverse=True)[:5]
+        resume_score = round(sum(top_scores) / len(top_scores)) if top_scores else 0
+
+    saved_count = conn.execute("SELECT COUNT(*) FROM saved_jobs WHERE user_id = ?", (user_id,)).fetchone()[0]
+    applications_count = conn.execute("SELECT COUNT(*) FROM applications WHERE user_id = ?", (user_id,)).fetchone()[0]
+    interviews_count = conn.execute(
+        "SELECT COUNT(*) FROM applications WHERE user_id = ? AND status IN ('interview', 'offer')", (user_id,)
+    ).fetchone()[0]
+    conn.close()
+
+    return {
+        "resume_score": resume_score,
+        "jobs_matched": jobs_matched,
+        "saved_jobs": saved_count,
+        "applications": applications_count,
+        "interviews": interviews_count,
+        "has_resume": latest_resume is not None,
+    }
 
 @app.post("/api/assistant")
-def assistant_chat(payload: AssistantRequest):
+def assistant_chat(payload: AssistantRequest, authorization: str = Header(None)):
     """
     AI-powered career assistant. Talks to OpenRouter (OpenAI-compatible API),
     so it needs your own OpenRouter API key — get one free at
     https://openrouter.ai/keys, then put it in a .env file as
     OPENROUTER_API_KEY=... (see .env.example).
+
+    Free plan: capped at FREE_LIMITS["ai_assistant_daily"] messages/day.
+    Pro plan: unlimited. Requires login either way, since usage is tracked
+    per account.
     """
+    user_id = get_current_user_id(authorization)
+    if user_id is None:
+        return JSONResponse(status_code=401, content={"error": "Please log in to use the AI Assistant."})
+
     if not OPENROUTER_API_KEY:
         return JSONResponse(status_code=503, content={
             "error": "AI assistant isn't configured yet. Add your OpenRouter API key to a .env file "
@@ -716,10 +1330,28 @@ def assistant_chat(payload: AssistantRequest):
     if not payload.messages:
         return JSONResponse(status_code=400, content={"error": "No messages provided"})
 
+    is_unlimited = has_feature(user_id, "ai_assistant_unlimited")
+    today = time.strftime("%Y-%m-%d")
+    conn = get_db()
+    usage_row = conn.execute(
+        "SELECT count FROM ai_usage WHERE user_id = ? AND usage_date = ?", (user_id, today)
+    ).fetchone()
+    used_today = usage_row["count"] if usage_row else 0
+    daily_limit = FREE_LIMITS["ai_assistant_daily"]
+
+    if not is_unlimited and used_today >= daily_limit:
+        conn.close()
+        return pro_required_response(
+            "ai_assistant_unlimited",
+            f"You've used today's {daily_limit} Free AI Assistant messages — upgrade to Pro for unlimited access.",
+            status_code=403,
+        )
+    conn.close()
+
     context = payload.context or {}
 
     system_prompt = (
-        "You are the AI Career Assistant embedded inside SIGNAL, a resume-and-job-matching app. "
+        "You are the AI Career Assistant embedded inside ResumeMaker, a resume-and-job-matching app. "
         "Give concise, specific, practical advice — a few short paragraphs or a short bullet list at most. "
         "When the user's resume text or job-match results are given below, ground your answers in that "
         "real data instead of generic advice. If asked something totally unrelated to careers/resumes, "
@@ -744,7 +1376,7 @@ def assistant_chat(payload: AssistantRequest):
                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                 "Content-Type": "application/json",
                 "HTTP-Referer": "http://localhost:5000",
-                "X-Title": "SIGNAL Resume Matcher",
+                "X-Title": "ResumeMaker",
             },
             json={
                 "model": OPENROUTER_MODEL,
@@ -767,7 +1399,23 @@ def assistant_chat(payload: AssistantRequest):
         reply_text = result["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError):
         reply_text = ""
-    return {"reply": reply_text}
+
+    # Only count successful replies against the daily quota — a failed
+    # upstream call above returns before this point and doesn't cost the user.
+    if not is_unlimited:
+        conn = get_db()
+        conn.execute(
+            "INSERT INTO ai_usage (user_id, usage_date, count) VALUES (?, ?, 1) "
+            "ON CONFLICT(user_id, usage_date) DO UPDATE SET count = count + 1",
+            (user_id, today),
+        )
+        conn.commit()
+        conn.close()
+        remaining = max(daily_limit - (used_today + 1), 0)
+    else:
+        remaining = None
+
+    return {"reply": reply_text, "remaining_today": remaining, "daily_limit": None if is_unlimited else daily_limit}
 
 
 # ---------------------------------------------------------------------------
