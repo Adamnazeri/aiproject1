@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     plan TEXT DEFAULT 'free',           -- 'free' or 'pro' (mock subscription)
     plan_started_at TIMESTAMP,
+    avatar_data TEXT,                   -- data URL (data:image/...;base64,...) for the profile photo
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -16,6 +17,7 @@ CREATE TABLE IF NOT EXISTS resumes (
     filename TEXT NOT NULL,
     raw_text TEXT NOT NULL,
     extracted_skills TEXT,          -- JSON array of skills, stored as text
+    visual_data TEXT,               -- JSON snapshot of the builder template and its content
     uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );

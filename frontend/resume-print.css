@@ -1,0 +1,139 @@
+:root {
+  color: #1a1a1a;
+  font-family: "Inter", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #eef1f5;
+}
+
+.print-shell {
+  padding: 1.25rem;
+}
+
+.print-toolbar {
+  width: min(210mm, 100%);
+  margin: 0 auto 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  color: #334155;
+  font-size: 0.88rem;
+}
+
+.print-toolbar p { margin: 0; }
+
+.print-toolbar button {
+  border: 0;
+  border-radius: 7px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0.7rem 1rem;
+}
+
+.resume-sheet {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 12px 40px rgba(15, 41, 71, 0.18);
+}
+
+.resume-doc { min-height: 297mm; font-size: 10pt; }
+.resume-doc .r-avatar {
+  width: 34mm;
+  height: 34mm;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #d9dee6;
+  flex-shrink: 0;
+}
+.resume-doc .r-section-title {
+  margin: 0 0 5mm;
+  font-size: 10pt;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.resume-doc .r-skill-pill {
+  display: inline-block;
+  margin: 0 2.5mm 2.5mm 0;
+  border-radius: 999px;
+  font-size: 8.5pt;
+  font-weight: 600;
+  line-height: 1.25;
+  padding: 1.6mm 3.4mm;
+}
+.resume-doc .r-entry { margin-bottom: 5mm; break-inside: avoid; }
+.resume-doc .r-entry-title { font-size: 10.5pt; font-weight: 700; line-height: 1.25; }
+.resume-doc .r-entry-sub { margin-top: 1mm; color: #64748b; font-size: 8.8pt; line-height: 1.35; }
+.resume-doc ul { margin: 2.2mm 0 0; padding-left: 4.5mm; font-size: 9pt; line-height: 1.48; }
+.resume-doc li + li { margin-top: 1mm; }
+.resume-doc p { margin: 0; font-size: 9.5pt; line-height: 1.55; white-space: pre-line; }
+
+/* Minimal template */
+.tpl-minimal { padding: 18mm; }
+.tpl-minimal .r-header { margin-bottom: 7mm; text-align: center; }
+.tpl-minimal .r-avatar { display: block; margin: 0 auto 4mm; }
+.tpl-minimal .r-name { font-size: 21pt; font-weight: 700; }
+.tpl-minimal .r-role { margin-top: 1mm; color: #64748b; font-size: 10pt; }
+.tpl-minimal .r-contact { margin-top: 2mm; color: #64748b; font-size: 8.8pt; }
+.tpl-minimal .r-section-title { margin-top: 8mm; }
+.tpl-minimal .r-skill-pill { background: #efeee9; color: #333; }
+
+/* Sidebar template */
+.tpl-sidebar { display: grid; grid-template-columns: 75mm 1fr; }
+.tpl-sidebar .r-side { min-height: 297mm; padding: 14mm 10mm; background: #1b3a63; color: #f4f3ef; }
+.tpl-sidebar .r-side .r-avatar { display: block; margin: 0 auto 5mm; }
+.tpl-sidebar .r-side .r-name { font-size: 16pt; font-weight: 700; text-align: center; }
+.tpl-sidebar .r-side .r-role { margin-top: 1.5mm; font-size: 9pt; opacity: 0.82; text-align: center; }
+.tpl-sidebar .r-side .r-contact { margin-top: 8mm; font-size: 8.6pt; line-height: 1.6; overflow-wrap: anywhere; }
+.tpl-sidebar .r-side .r-section-title { margin-top: 11mm; color: #f4f3ef; opacity: 0.9; }
+.tpl-sidebar .r-side .r-skill-pill { background: rgba(255, 255, 255, 0.14); color: #f4f3ef; }
+.tpl-sidebar .r-side .r-entry-sub { color: rgba(244, 243, 239, 0.76); }
+.tpl-sidebar .r-main { padding: 22mm 15mm; }
+.tpl-sidebar .r-main .r-section-title:not(:first-child) { margin-top: 11mm; }
+
+/* Bold header template */
+.tpl-bold .r-header {
+  display: flex;
+  align-items: center;
+  gap: 8mm;
+  padding: 15mm 18mm;
+  background: #4c6b87;
+  color: #fff;
+}
+.tpl-bold .r-header .r-name { font-size: 20pt; font-weight: 700; }
+.tpl-bold .r-header .r-role { margin-top: 1mm; font-size: 10pt; opacity: 0.9; }
+.tpl-bold .r-header .r-contact { margin-top: 2mm; font-size: 8.8pt; opacity: 0.9; }
+.tpl-bold .r-body { display: grid; grid-template-columns: 1fr 1.4fr; gap: 11mm; padding: 16mm 18mm; }
+.tpl-bold .r-body .r-section-title:not(:first-child) { margin-top: 10mm; }
+.tpl-bold .r-skill-pill { background: #eaf0f5; color: #345066; }
+
+.error-card {
+  padding: 18mm;
+  color: #991b1b;
+  font-size: 12pt;
+}
+
+@media print {
+  @page { size: A4; margin: 0; }
+
+  html, body { width: 210mm; min-height: 297mm; background: #fff; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .print-shell { padding: 0; }
+  .print-toolbar { display: none; }
+  .resume-sheet { margin: 0; box-shadow: none; }
+}
+
+@media screen and (max-width: 850px) {
+  .print-shell { overflow-x: auto; }
+  .print-toolbar { width: 210mm; }
+}
