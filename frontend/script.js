@@ -1558,8 +1558,41 @@ copyResumeBtn.addEventListener("click", async () => {
   setTimeout(() => { copyResumeBtn.textContent = originalLabel; }, 1800);
 });
 
-downloadPdfBtn.addEventListener("click", () => {
-  window.print();
+downloadPdfBtn.addEventListener("click", async () => {
+  if (!currentUser) {
+    openAuthModal("login");
+    return;
+  }
+
+  downloadPdfBtn.disabled = true;
+  saveToHistoryStatus.classList.remove("error");
+  saveToHistoryStatus.textContent = "Preparing PDF...";
+  try {
+    const builderData = getBuilderFieldValues();
+    const fullName = builderData.fullName || "resume";
+    const filename = `${fullName.toLowerCase().replace(/\s+/g, "-")}.txt`;
+    const res = await fetch(`${API_BASE}/resumes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({
+        filename,
+        text: lastPlainText,
+        visual_data: { ...builderData, photoDataUrl, template: selectedTemplate },
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || data.error || "Could not prepare PDF");
+
+    refreshResumeHistory();
+    refreshDashboard();
+    downloadSavedResume(data.id, data.filename);
+    saveToHistoryStatus.textContent = "PDF ready.";
+  } catch (err) {
+    saveToHistoryStatus.textContent = err.message;
+    saveToHistoryStatus.classList.add("error");
+  } finally {
+    downloadPdfBtn.disabled = false;
+  }
 });
 
 // Start with one empty row each, unless an autosaved draft is available.

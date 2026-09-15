@@ -103,11 +103,11 @@ function plainTextFallback(rawText) {
 
 function renderResumeVisual(data) {
   const validExperience = data.experience.filter(item => item.title || item.company || item.description);
-  const validEducation = data.education.filter(item => item.degree || item.school || item.year);
+    const validEducation = data.education.filter(item => item.degree || item.school);
   const avatar = data.photoDataUrl
     ? `<img class="r-avatar" src="${escapeHtml(data.photoDataUrl)}" alt="Profile photo">`
-    : `<div class="r-avatar" style="display:flex;align-items:center;justify-content:center;font-size:18pt;font-weight:700;color:#64748b;">${escapeHtml(getInitials(data.fullName))}</div>`;
-  const contactInline = [data.email, data.phone].filter(Boolean).map(escapeHtml).join(" &middot; ");
+    : `<div class="r-avatar" style="display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700;color:#888;">${escapeHtml(getInitials(data.fullName))}</div>`;
+  const contactInline = [data.email, data.phone].filter(Boolean).map(escapeHtml).join(" · ");
   const contactStacked = [data.email, data.phone].filter(Boolean).map(escapeHtml).join("<br>");
   const skills = data.skills.map(skill => `<span class="r-skill-pill">${escapeHtml(skill)}</span>`).join("");
   const experience = validExperience.map(item => {
@@ -115,18 +115,18 @@ function renderResumeVisual(data) {
     const meta = [item.duration, item.location].filter(Boolean).map(escapeHtml).join(" &middot; ");
     const bullets = item.description.split("\n").map(line => line.trim()).filter(Boolean)
       .map(line => `<li>${escapeHtml(line)}</li>`).join("");
-    return `<section class="r-entry"><div class="r-entry-title">${title}</div>${meta ? `<div class="r-entry-sub">${meta}</div>` : ""}${bullets ? `<ul>${bullets}</ul>` : ""}</section>`;
+      return `<div class="r-entry"><div class="r-entry-title">${title}</div>${meta ? `<div class="r-entry-sub">${meta}</div>` : ""}${bullets ? `<ul>${bullets}</ul>` : ""}</div>`;
   }).join("");
   const education = validEducation.map(item => {
     const details = [item.school, item.year].filter(Boolean).map(escapeHtml).join(" &middot; ");
-    return `<section class="r-entry"><div class="r-entry-title">${escapeHtml(item.degree)}</div>${details ? `<div class="r-entry-sub">${details}</div>` : ""}</section>`;
+     return `<div class="r-entry"><div class="r-entry-title">${escapeHtml(item.degree)}</div><div class="r-entry-sub">${details}</div></div>`;
   }).join("");
 
   if (data.template === "sidebar") {
-    return `<div class="resume-doc tpl-sidebar"><aside class="r-side">${avatar}<div class="r-name">${escapeHtml(data.fullName)}</div>${data.targetRole ? `<div class="r-role">${escapeHtml(data.targetRole)}</div>` : ""}<div class="r-contact">${contactStacked}</div>${data.skills.length ? `<div class="r-section-title">Skills</div><div>${skills}</div>` : ""}${validEducation.length ? `<div class="r-section-title">Education</div>${education}` : ""}</aside><section class="r-main">${data.summary ? `<div class="r-section-title">Summary</div><p>${escapeHtml(data.summary)}</p>` : ""}${validExperience.length ? `<div class="r-section-title">Experience</div>${experience}` : ""}</section></div>`;
+     return `<div class="resume-doc tpl-sidebar"><div class="r-side">${avatar}<div class="r-name">${escapeHtml(data.fullName)}</div>${data.targetRole ? `<div class="r-role">${escapeHtml(data.targetRole)}</div>` : ""}<div class="r-contact">${contactStacked}</div>${data.skills.length ? `<div class="r-section-title">Skills</div><div>${skills}</div>` : ""}${validEducation.length ? `<div class="r-section-title">Education</div>${education}` : ""}</div><div class="r-main">${data.summary ? `<div class="r-section-title">Summary</div><p>${escapeHtml(data.summary)}</p>` : ""}${validExperience.length ? `<div class="r-section-title">Experience</div>${experience}` : ""}</div></div>`;
   }
   if (data.template === "bold") {
-    return `<div class="resume-doc tpl-bold"><header class="r-header">${avatar}<div><div class="r-name">${escapeHtml(data.fullName)}</div>${data.targetRole ? `<div class="r-role">${escapeHtml(data.targetRole)}</div>` : ""}<div class="r-contact">${contactInline}</div></div></header><main class="r-body"><section>${data.skills.length ? `<div class="r-section-title">Skills</div><div>${skills}</div>` : ""}${validEducation.length ? `<div class="r-section-title">Education</div>${education}` : ""}</section><section>${data.summary ? `<div class="r-section-title">Summary</div><p>${escapeHtml(data.summary)}</p>` : ""}${validExperience.length ? `<div class="r-section-title">Experience</div>${experience}` : ""}</section></main></div>`;
+     return `<div class="resume-doc tpl-bold"><div class="r-header">${avatar}<div><div class="r-name">${escapeHtml(data.fullName)}</div>${data.targetRole ? `<div class="r-role">${escapeHtml(data.targetRole)}</div>` : ""}<div class="r-contact">${contactInline}</div></div></div><div class="r-body"><div>${data.skills.length ? `<div class="r-section-title">Skills</div><div>${skills}</div>` : ""}${validEducation.length ? `<div class="r-section-title">Education</div>${education}` : ""}</div><div>${data.summary ? `<div class="r-section-title">Summary</div><p>${escapeHtml(data.summary)}</p>` : ""}${validExperience.length ? `<div class="r-section-title">Experience</div>${experience}` : ""}</div></div></div>`;
   }
   return `<div class="resume-doc tpl-minimal"><header class="r-header">${avatar}<div class="r-name">${escapeHtml(data.fullName)}</div>${data.targetRole ? `<div class="r-role">${escapeHtml(data.targetRole)}</div>` : ""}<div class="r-contact">${contactInline}</div></header>${data.summary ? `<div class="r-section-title">Summary</div><p>${escapeHtml(data.summary)}</p>` : ""}${data.skills.length ? `<div class="r-section-title">Skills</div><div>${skills}</div>` : ""}${validExperience.length ? `<div class="r-section-title">Experience</div>${experience}` : ""}${validEducation.length ? `<div class="r-section-title">Education</div>${education}` : ""}</div>`;
 }
