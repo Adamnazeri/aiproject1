@@ -168,11 +168,33 @@
           <div id="resumeVisual" class="resume-visual-wrap">
             <div class="preview-placeholder">Start filling the form on the left — your resume builds itself here.</div>
           </div>
+          <section class="resume-coach" aria-labelledby="coachTitle" aria-live="polite">
+            <div class="coach-topline">
+              <div>
+                <span class="coach-kicker">SMART RESUME COACH</span>
+                <h3 id="coachTitle">Build a stronger first impression</h3>
+              </div>
+              <div class="coach-ring" id="coachRing" style="--coach-progress:0deg;">
+                <span id="coachScore">0</span><small>/100</small>
+              </div>
+            </div>
+            <p class="coach-message" id="coachMessage">Add a few details and I will highlight your next best improvement.</p>
+            <div class="coach-metrics">
+              <div class="coach-metric"><span>Contact</span><strong id="coachContact">Missing</strong></div>
+              <div class="coach-metric"><span>Skills</span><strong id="coachSkills">0 listed</strong></div>
+              <div class="coach-metric"><span>Impact</span><strong id="coachImpact">0 results</strong></div>
+            </div>
+            <div class="coach-footer">
+              <button type="button" class="coach-action" id="coachActionBtn">Start with your details</button>
+              <span class="draft-status" id="draftStatus">Draft stays on this device</span>
+            </div>
+          </section>
           <div class="preview-actions" id="generatedPreview">
             <button type="button" id="useForScanBtn" class="secondary-btn" disabled>Use this to scan jobs ↓</button>
             <button type="button" id="saveToHistoryBtn" class="secondary-btn" disabled>💾 Save to My Resumes</button>
             <button type="button" id="downloadPdfBtn" class="secondary-btn" disabled>Download / Print PDF</button>
             <button type="button" id="downloadBtn" class="secondary-btn" disabled>Download .txt</button>
+            <button type="button" id="copyResumeBtn" class="secondary-btn" disabled>Copy resume</button>
           </div>
           <p id="saveToHistoryStatus" class="status-msg"></p>
         </div>
@@ -246,7 +268,7 @@
           <li>Overall match score</li>
           <li>Limited saved jobs</li>
         </ul>
-        <button type="button" class="secondary-btn subscribe-btn" data-plan="free">Get Started</button>
+        <button type="button" class="primary-btn subscribe-btn" data-plan="free">Get Started</button>
       </div>
       <div class="plan-card featured" data-plan="pro">
         <div class="plan-name">Pro</div>
@@ -263,16 +285,36 @@
           <li>Premium templates (coming soon)</li>
         </ul>
         <button type="button" class="primary-btn subscribe-btn" data-plan="pro">Upgrade to Pro</button>
-        <p class="plan-note">Mock checkout — replace with a real gateway when ready.</p>
       </div>
     </div>
     <p id="pricingStatus" class="status-msg"></p>
   </section>
 </main>
 
-<footer>
-  <span>Built with Python · FastAPI · SQLite · vanilla JS</span>
-</footer>
+<!-- Edit Profile modal -->
+<div class="modal-overlay" id="profileModal" hidden>
+  <div class="modal-card">
+    <button type="button" class="modal-close" id="profileModalClose">✕</button>
+    <h3 class="modal-title">Edit profile</h3>
+    <p class="modal-subtitle">Update your name, email, or profile photo.</p>
+
+    <div class="photo-upload-row">
+      <div id="profilePhotoPreview" class="photo-preview">No photo</div>
+      <div>
+        <label for="profilePhotoInput" class="secondary-btn file-label">Upload photo</label>
+        <input type="file" id="profilePhotoInput" accept="image/*" hidden />
+        <button type="button" id="removeProfilePhotoBtn" class="secondary-btn" style="margin-left:0.5rem;">Remove</button>
+      </div>
+    </div>
+
+    <div class="modal-form">
+      <input type="text" id="profileNameInput" placeholder="Full name" />
+      <input type="email" id="profileEmailInput" placeholder="Email" />
+      <button type="button" class="primary-btn" id="profileSaveBtn" style="justify-content:center;">Save changes</button>
+    </div>
+    <p id="profileStatus" class="status-msg"></p>
+  </div>
+</div>
 
 <!-- Dashboard modal -->
 <div class="modal-overlay" id="dashboardModal" hidden>

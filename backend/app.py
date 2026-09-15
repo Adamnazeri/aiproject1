@@ -23,6 +23,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import pypdf
 import docx as docx_lib
+from fpdf import FPDF
+from fpdf.enums import WrapMode, XPos, YPos
 
 load_dotenv()  # reads a local .env file, if present, into os.environ
 
@@ -472,10 +474,15 @@ def ensure_schema_upgrades():
     user_upgrades = {
         "plan": "ALTER TABLE users ADD COLUMN plan TEXT DEFAULT 'free'",
         "plan_started_at": "ALTER TABLE users ADD COLUMN plan_started_at TIMESTAMP",
+        "avatar_data": "ALTER TABLE users ADD COLUMN avatar_data TEXT",
     }
     for col, stmt in user_upgrades.items():
         if col not in users_cols:
             conn.execute(stmt)
+
+    resume_cols = {row[1] for row in conn.execute("PRAGMA table_info(resumes)").fetchall()}
+    if "visual_data" not in resume_cols:
+        conn.execute("ALTER TABLE resumes ADD COLUMN visual_data TEXT")
 
     jobs_cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
     job_upgrades = {
@@ -608,14 +615,17 @@ def build_resume_text(data: dict) -> str:
         lines.append("-" * 40)
         for exp in experience:
             title = exp.get("title", "").strip()
+            company = exp.get("company", "").strip()
             duration = exp.get("duration", "").strip()
+            location = exp.get("location", "").strip()
             description = exp.get("description", "").strip()
 
-            header = title
-            if duration:
-                header += f" ({duration})"
+            header = " — ".join(filter(None, [title, company]))
             if header:
                 lines.append(header)
+            meta = " · ".join(filter(None, [duration, location]))
+            if meta:
+                lines.append(meta)
             for row in description.split("\n"):
                 if row.strip():
                     lines.append(f"  • {row.strip()}")
@@ -636,6 +646,93 @@ def build_resume_text(data: dict) -> str:
         lines.append("")
 
     return "\n".join(lines).strip() + "\n"
+
+
+# ---------------------------------------------------------------------------
+# PDF generation for saved resumes — a clean, simple layout built straight
+# from the stored plain text (works for both scanner-saved and
+# builder-saved resumes alike, since only raw text is guaranteed to exist
+# for every saved resume). Only the exact section headers build_resume_text()
+# produces (SUMMARY / SKILLS / EXPERIENCE / EDUCATION) are bolded — matched
+# by an explicit allow-list rather than an "is this short + uppercase"
+# heuristic, so the person's name (also uppercased by build_resume_text())
+# never gets mistaken for a heading. Compact margins/line-height keep this
+# to as few pages as the actual content needs.
+# ---------------------------------------------------------------------------
+RESUME_PDF_HEADERS = {"SUMMARY", "SKILLS", "EXPERIENCE", "EDUCATION"}
+
+
+def configure_resume_pdf_font(pdf: FPDF) -> str:
+    """Register a Unicode font when the host provides one.
+
+    FPDF's built-in Helvetica font only accepts Latin-1. Saved resumes often
+    contain typographic punctuation (for example ``—`` and ``•``), so relying
+    on it alone made otherwise valid downloads fail with a 500 error. The
+    bundled-font path is first so a deployment can add a portable DejaVu font;
+    the OS paths keep local development working without another dependency.
+    """
+    font_candidates = (
+        (
+            os.path.join(BASE_DIR, "backend", "fonts", "DejaVuSans.ttf"),
+            os.path.join(BASE_DIR, "backend", "fonts", "DejaVuSans-Bold.ttf"),
+        ),
+        (r"C:\Windows\Fonts\segoeui.ttf", r"C:\Windows\Fonts\segoeuib.ttf"),
+        (r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf"),
+        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    )
+    for regular_path, bold_path in font_candidates:
+        if os.path.isfile(regular_path) and os.path.isfile(bold_path):
+            pdf.add_font("ResumeUnicode", "", regular_path)
+            pdf.add_font("ResumeUnicode", "B", bold_path)
+            return "ResumeUnicode"
+    return "Helvetica"
+
+
+def pdf_safe_text(text: str, supports_unicode: bool) -> str:
+    """Keep a download usable if the server has no Unicode TrueType font."""
+    if supports_unicode:
+        return text
+
+    replacements = str.maketrans({
+        "—": "-", "–": "-", "−": "-", "•": "*", "…": "...",
+        "“": '"', "”": '"', "‘": "'", "’": "'", "\u00a0": " ",
+    })
+    return text.translate(replacements).encode("latin-1", "replace").decode("latin-1")
+
+
+def generate_resume_pdf(text: str) -> bytes:
+    pdf = FPDF(format="A4", unit="mm")
+    pdf.set_auto_page_break(auto=True, margin=14)
+    pdf.set_margins(left=15, top=15, right=15)
+    pdf.add_page()
+    font_family = configure_resume_pdf_font(pdf)
+    supports_unicode = font_family != "Helvetica"
+    pdf.set_font(font_family, size=10.5)
+
+    for raw_line in text.replace("\r\n", "\n").split("\n"):
+        line = raw_line.rstrip()
+        stripped = line.strip()
+
+        if stripped and set(stripped) == {"-"}:
+            continue  # the "----" underline rule build_resume_text() draws under headings
+        if not stripped:
+            pdf.ln(2.5)
+            continue
+        if stripped in RESUME_PDF_HEADERS:
+            pdf.ln(1.5)
+            pdf.set_font(font_family, "B", 12)
+            pdf.multi_cell(
+                0, 6.5, pdf_safe_text(stripped, supports_unicode),
+                new_x=XPos.LMARGIN, new_y=YPos.NEXT, wrapmode=WrapMode.CHAR,
+            )
+            pdf.set_font(font_family, size=10.5)
+            continue
+        pdf.multi_cell(
+            0, 5.5, pdf_safe_text(line, supports_unicode),
+            new_x=XPos.LMARGIN, new_y=YPos.NEXT, wrapmode=WrapMode.CHAR,
+        )
+
+    return bytes(pdf.output())
 
 
 # ---------------------------------------------------------------------------
@@ -693,6 +790,9 @@ class GenerateResumeRequest(BaseModel):
 class ResumeTextRequest(BaseModel):
     filename: str = "resume.txt"
     text: str = ""
+    # Builder saves include this snapshot so their selected template, photo,
+    # and structured sections can be recreated in the print view.
+    visual_data: dict | None = None
 
 
 class ChatMessage(BaseModel):
@@ -714,6 +814,15 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str
     password: str
+
+
+class ProfileUpdateRequest(BaseModel):
+    name: str | None = None
+    email: str | None = None
+    avatar_data: str | None = None  # data URL (e.g. "data:image/png;base64,...") or "" to remove
+
+
+MAX_AVATAR_BYTES = 350_000  # ~350KB — generous for a small profile photo, keeps the DB light
 
 
 class SubscribeRequest(BaseModel):
@@ -767,7 +876,7 @@ def signup(payload: SignupRequest):
     conn.close()
 
     token = create_token(user_id)
-    return {"token": token, "user": {"id": user_id, "name": name, "email": email, "plan": "free"}}
+    return {"token": token, "user": {"id": user_id, "name": name, "email": email, "plan": "free", "avatar_data": None}}
 
 
 @app.post("/api/auth/login")
@@ -783,7 +892,10 @@ def login(payload: LoginRequest):
     token = create_token(user["id"])
     return {
         "token": token,
-        "user": {"id": user["id"], "name": user["name"], "email": user["email"], "plan": user["plan"] or "free"},
+        "user": {
+            "id": user["id"], "name": user["name"], "email": user["email"],
+            "plan": user["plan"] or "free", "avatar_data": user["avatar_data"],
+        },
     }
 
 
@@ -797,7 +909,68 @@ def me(authorization: str = Header(None)):
     conn.close()
     if user is None:
         return JSONResponse(status_code=401, content={"error": "Not authenticated"})
-    return {"id": user["id"], "name": user["name"], "email": user["email"], "plan": user["plan"] or "free"}
+    return {
+        "id": user["id"], "name": user["name"], "email": user["email"],
+        "plan": user["plan"] or "free", "avatar_data": user["avatar_data"],
+    }
+
+
+@app.patch("/api/auth/profile")
+def update_profile(payload: ProfileUpdateRequest, authorization: str = Header(None)):
+    user_id = get_current_user_id(authorization)
+    if user_id is None:
+        return JSONResponse(status_code=401, content={"error": "Please log in first"})
+
+    conn = get_db()
+    updates, params = [], []
+
+    if payload.name is not None:
+        name = payload.name.strip()
+        if not name:
+            conn.close()
+            return JSONResponse(status_code=400, content={"error": "Name can't be empty"})
+        updates.append("name = ?")
+        params.append(name)
+
+    if payload.email is not None:
+        email = payload.email.strip().lower()
+        if not email or "@" not in email:
+            conn.close()
+            return JSONResponse(status_code=400, content={"error": "Enter a valid email"})
+        taken = conn.execute("SELECT id FROM users WHERE email = ? AND id != ?", (email, user_id)).fetchone()
+        if taken:
+            conn.close()
+            return JSONResponse(status_code=409, content={"error": "That email is already in use"})
+        updates.append("email = ?")
+        params.append(email)
+
+    if payload.avatar_data is not None:
+        if payload.avatar_data == "":
+            updates.append("avatar_data = NULL")
+        else:
+            if not payload.avatar_data.startswith("data:image/"):
+                conn.close()
+                return JSONResponse(status_code=400, content={"error": "Profile photo must be an image"})
+            if len(payload.avatar_data) > MAX_AVATAR_BYTES:
+                conn.close()
+                return JSONResponse(status_code=400, content={"error": "That photo is too large — please use a smaller image"})
+            updates.append("avatar_data = ?")
+            params.append(payload.avatar_data)
+
+    if not updates:
+        conn.close()
+        return JSONResponse(status_code=400, content={"error": "Nothing to update"})
+
+    params.append(user_id)
+    conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
+    conn.commit()
+
+    user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return {
+        "id": user["id"], "name": user["name"], "email": user["email"],
+        "plan": user["plan"] or "free", "avatar_data": user["avatar_data"],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -910,20 +1083,21 @@ def get_resume_visible_ids(user_id: int, conn) -> set:
     return {r["id"] for r in conn.execute(query, params).fetchall()}
 
 
-@app.get("/api/resumes/{resume_id}/download")
-def download_resume(resume_id: int, authorization: str = Header(None)):
+@app.get("/api/resumes/{resume_id}/print-data")
+def get_resume_print_data(resume_id: int, authorization: str = Header(None)):
+    """Return an authorised resume's saved builder snapshot for browser PDF export."""
     user_id = get_current_user_id(authorization)
     if user_id is None:
         return JSONResponse(status_code=401, content={"error": "Please log in first"})
 
     conn = get_db()
     resume = conn.execute(
-        "SELECT * FROM resumes WHERE id = ? AND user_id = ?", (resume_id, user_id)
+        "SELECT filename, raw_text, visual_data FROM resumes WHERE id = ? AND user_id = ?",
+        (resume_id, user_id),
     ).fetchone()
     if resume is None:
         conn.close()
         return JSONResponse(status_code=404, content={"error": "Resume not found"})
-
     if resume_id not in get_resume_visible_ids(user_id, conn):
         conn.close()
         return pro_required_response(
@@ -932,15 +1106,60 @@ def download_resume(resume_id: int, authorization: str = Header(None)):
         )
     conn.close()
 
-    filename = resume["filename"] or f"resume-{resume_id}.txt"
-    if not filename.lower().endswith(".txt"):
-        filename += ".txt"
+    try:
+        visual_data = json.loads(resume["visual_data"]) if resume["visual_data"] else None
+    except (TypeError, json.JSONDecodeError):
+        visual_data = None
 
-    return Response(
-        content=resume["raw_text"],
-        media_type="text/plain",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    return {
+        "filename": resume["filename"],
+        "visual_data": visual_data,
+        # Older, text-only saves use this to render a clean Sidebar fallback.
+        "raw_text": resume["raw_text"],
+    }
+
+
+@app.get("/api/resumes/{resume_id}/download")
+def download_resume(resume_id: int, authorization: str = Header(None)):
+    try:
+        user_id = get_current_user_id(authorization)
+        if user_id is None:
+            return JSONResponse(status_code=401, content={"error": "Please log in first"})
+
+        conn = get_db()
+        resume = conn.execute(
+            "SELECT * FROM resumes WHERE id = ? AND user_id = ?", (resume_id, user_id)
+        ).fetchone()
+        if resume is None:
+            conn.close()
+            return JSONResponse(status_code=404, content={"error": "Resume not found"})
+
+        if resume_id not in get_resume_visible_ids(user_id, conn):
+            conn.close()
+            return pro_required_response(
+                "resume_history",
+                "This resume is outside your Free plan's 3 most-recent saved resumes. Upgrade to Pro to access your full history.",
+            )
+        conn.close()
+
+        base_filename = resume["filename"] or f"resume-{resume_id}"
+        base_filename = re.sub(r"\.(txt|pdf|docx)$", "", base_filename, flags=re.IGNORECASE)
+        filename = f"{base_filename}.pdf"
+
+        pdf_bytes = generate_resume_pdf(resume["raw_text"])
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        # Catches literally anything (PDF generation, DB, header issues) so
+        # the browser always gets a clean JSON error to show, instead of a
+        # dropped/broken connection that looks like "no internet" to fetch().
+        import traceback
+        traceback.print_exc()  # full traceback in the server terminal for debugging
+        return JSONResponse(status_code=500, content={"error": f"Could not generate the PDF: {str(e)}"})
 
 
 @app.delete("/api/resumes/{resume_id}")
@@ -976,9 +1195,10 @@ def upload_resume(payload: ResumeTextRequest, authorization: str = Header(None))
     user_id = get_current_user_id(authorization) or 1
 
     conn = get_db()
+    visual_data = json.dumps(payload.visual_data) if payload.visual_data is not None else None
     cur = conn.execute(
-        "INSERT INTO resumes (user_id, filename, raw_text, extracted_skills) VALUES (?, ?, ?, ?)",
-        (user_id, filename, text, json.dumps(skills)),
+        "INSERT INTO resumes (user_id, filename, raw_text, extracted_skills, visual_data) VALUES (?, ?, ?, ?, ?)",
+        (user_id, filename, text, json.dumps(skills), visual_data),
     )
     conn.commit()
     resume_id = cur.lastrowid

@@ -124,15 +124,20 @@ function renderAuthArea() {
     return;
   }
   const plan = currentUser.plan || "free";
+  const avatarHtml = currentUser.avatar_data
+    ? `<img src="${currentUser.avatar_data}" alt="">`
+    : `<span class="user-chip-initial">${escapeHtml((currentUser.name || "?")[0].toUpperCase())}</span>`;
   authArea.innerHTML = `
     <button type="button" class="nav-btn ghost" id="dashboardNavBtn">📊 Dashboard</button>
-    <div class="user-chip">
+    <button type="button" class="user-chip" id="editProfileTrigger" title="Edit profile">
+      <span class="user-chip-avatar">${avatarHtml}</span>
       <span>${escapeHtml(currentUser.name)}</span>
       <span class="plan-badge ${plan === "pro" ? "pro" : ""}">${plan}</span>
-    </div>
+    </button>
     <button type="button" class="nav-btn ghost" id="logoutBtn">Log out</button>
   `;
   document.getElementById("dashboardNavBtn").addEventListener("click", openDashboardModal);
+  document.getElementById("editProfileTrigger").addEventListener("click", openProfileModal);
   document.getElementById("logoutBtn").addEventListener("click", () => {
     clearSession();
     updatePricingUI();
@@ -173,6 +178,99 @@ function closeDashboardModal() {
 }
 dashboardModalClose.addEventListener("click", closeDashboardModal);
 dashboardModal.addEventListener("click", (e) => { if (e.target === dashboardModal) closeDashboardModal(); });
+
+// --- Edit Profile modal ---
+const profileModal = document.getElementById("profileModal");
+const profileModalClose = document.getElementById("profileModalClose");
+const profilePhotoPreview = document.getElementById("profilePhotoPreview");
+const profilePhotoInput = document.getElementById("profilePhotoInput");
+const removeProfilePhotoBtn = document.getElementById("removeProfilePhotoBtn");
+const profileNameInput = document.getElementById("profileNameInput");
+const profileEmailInput = document.getElementById("profileEmailInput");
+const profileSaveBtn = document.getElementById("profileSaveBtn");
+const profileStatus = document.getElementById("profileStatus");
+
+let pendingAvatarData; // undefined = no change, "" = removed, "data:..." = new photo
+
+function openProfileModal() {
+  if (!currentUser) {
+    openAuthModal("login");
+    return;
+  }
+  pendingAvatarData = undefined;
+  profileNameInput.value = currentUser.name || "";
+  profileEmailInput.value = currentUser.email || "";
+  profilePhotoPreview.innerHTML = currentUser.avatar_data
+    ? `<img src="${currentUser.avatar_data}" alt="Profile photo">`
+    : "No photo";
+  profileStatus.textContent = "";
+  profileStatus.classList.remove("error");
+  profileModal.hidden = false;
+}
+function closeProfileModal() {
+  profileModal.hidden = true;
+}
+profileModalClose.addEventListener("click", closeProfileModal);
+profileModal.addEventListener("click", (e) => { if (e.target === profileModal) closeProfileModal(); });
+
+profilePhotoInput.addEventListener("change", () => {
+  const file = profilePhotoInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    pendingAvatarData = reader.result;
+    profilePhotoPreview.innerHTML = `<img src="${pendingAvatarData}" alt="Profile photo">`;
+  };
+  reader.readAsDataURL(file);
+});
+
+removeProfilePhotoBtn.addEventListener("click", () => {
+  const img = profilePhotoPreview.querySelector("img");
+  pendingAvatarData = "";
+  profilePhotoInput.value = "";
+  if (img && !prefersReducedMotion) {
+    img.classList.add("photo-leaving");
+    img.addEventListener("animationend", () => { profilePhotoPreview.innerHTML = "No photo"; }, { once: true });
+  } else {
+    profilePhotoPreview.innerHTML = "No photo";
+  }
+});
+
+profileSaveBtn.addEventListener("click", async () => {
+  const name = profileNameInput.value.trim();
+  const email = profileEmailInput.value.trim();
+  if (!name || !email) {
+    profileStatus.textContent = "Name and email are both required.";
+    profileStatus.classList.add("error");
+    return;
+  }
+
+  const payload = { name, email };
+  if (pendingAvatarData !== undefined) payload.avatar_data = pendingAvatarData;
+
+  profileSaveBtn.disabled = true;
+  profileStatus.classList.remove("error");
+  profileStatus.textContent = "Saving...";
+  try {
+    const res = await fetch(`${API_BASE}/auth/profile`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || data.error || "Could not save");
+
+    currentUser = data;
+    renderAuthArea();
+    showSuccessStatus(profileStatus, "Profile updated.");
+    setTimeout(closeProfileModal, 900);
+  } catch (err) {
+    profileStatus.textContent = err.message;
+    profileStatus.classList.add("error");
+  } finally {
+    profileSaveBtn.disabled = false;
+  }
+});
 
 async function refreshDashboard() {
   if (!authToken || !currentUser) return;
@@ -255,25 +353,38 @@ async function refreshResumeHistory() {
   }
 }
 
-async function downloadSavedResume(id, filename) {
+function downloadSavedResume(id, filename) {
+  // The browser print view uses the same HTML/CSS component as Live Preview,
+  // preserving the selected template, colours, and profile photo in "Save as
+  // PDF". Opening it during the click event prevents popup blockers.
+  const printUrl = new URL("resume-print.html", window.location.href);
+  printUrl.searchParams.set("id", id);
+  printUrl.searchParams.set("filename", filename || `resume-${id}`);
+  const printWindow = window.open(printUrl.href, "_blank");
+  if (!printWindow) {
+    alert("Please allow pop-ups, then try Print / Save PDF again.");
+  }
+}
+
+async function downloadLegacyResumePdf(id, filename) {
   try {
     const res = await fetch(`${API_BASE}/resumes/${id}/download`, { headers: authHeaders() });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      if (isProRequiredResponse(data)) {
-        alert(data.message); // brief, blocking — this is an edge case (an id that scrolled out of view mid-session)
-      }
+      alert(data.message || data.error || "Could not download this resume. Please try again.");
       return;
     }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = filename || `resume-${id}.txt`;
+    const base = (filename || `resume-${id}`).replace(/\.(txt|pdf|docx)$/i, "");
+    a.download = `${base}.pdf`; // server always returns a PDF now, regardless of the original saved filename
     a.click();
     URL.revokeObjectURL(url);
   } catch (err) {
     console.error(err);
+    alert("Could not download this resume — check your connection and try again.");
   }
 }
 
@@ -826,10 +937,23 @@ const bPhoto = document.getElementById("bPhoto");
 const photoPreview = document.getElementById("photoPreview");
 const removePhotoBtn = document.getElementById("removePhotoBtn");
 const templatePicker = document.getElementById("templatePicker");
+const copyResumeBtn = document.getElementById("copyResumeBtn");
+const coachRing = document.getElementById("coachRing");
+const coachScore = document.getElementById("coachScore");
+const coachMessage = document.getElementById("coachMessage");
+const coachContact = document.getElementById("coachContact");
+const coachSkills = document.getElementById("coachSkills");
+const coachImpact = document.getElementById("coachImpact");
+const coachActionBtn = document.getElementById("coachActionBtn");
+const draftStatus = document.getElementById("draftStatus");
 
 let photoDataUrl = null;
 let selectedTemplate = "minimal";
 let lastPlainText = "";
+let coachTarget = "bFullName";
+let draftSaveTimer = null;
+
+const BUILDER_DRAFT_KEY = "signal_resume_builder_draft_v1";
 
 const experienceEmpty = document.getElementById("experienceEmpty");
 const educationEmpty = document.getElementById("educationEmpty");
@@ -849,6 +973,93 @@ function getBuilderFieldValues() {
   };
 }
 
+function hasBuilderContent(data) {
+  return data.fullName || data.email || data.phone || data.summary ||
+    data.skills.length || data.experience.some(entry => entry.title || entry.company || entry.description) ||
+    data.education.some(entry => entry.degree || entry.school);
+}
+
+function updateResumeCoach(data) {
+  const hasContact = Boolean(data.email || data.phone);
+  const hasSummary = data.summary.length >= 40;
+  const hasSkills = data.skills.length >= 3;
+  const experienceWithDetail = data.experience.filter(entry => entry.title || entry.company)
+    .filter(entry => entry.description.trim()).length;
+  const achievementCount = data.experience.flatMap(entry => entry.description.split("\n"))
+    .filter(line => /\d|%|\$|rm\s?\d|increased|reduced|improved|grew|saved/i.test(line)).length;
+  const hasEducation = data.education.some(entry => entry.degree || entry.school);
+
+  const score = Math.min(100,
+    (data.fullName ? 10 : 0) + (hasContact ? 12 : 0) + (data.targetRole ? 6 : 0) +
+    (hasSummary ? 18 : 0) + (hasSkills ? 18 : Math.min(data.skills.length * 5, 15)) +
+    Math.min(experienceWithDetail * 16, 28) + Math.min(achievementCount * 3, 6) + (hasEducation ? 2 : 0)
+  );
+
+  let nextMessage = "Start with your name and one way for employers to reach you.";
+  let actionLabel = "Add your details";
+  coachTarget = "bFullName";
+  if (data.fullName && !hasContact) {
+    nextMessage = "Your name is in place. Add an email or phone number so recruiters can contact you.";
+    actionLabel = "Add contact details";
+    coachTarget = "bEmail";
+  } else if (hasContact && !hasSummary) {
+    nextMessage = "Add a short summary with your strengths, role, and the value you bring.";
+    actionLabel = "Strengthen summary";
+    coachTarget = "bSummary";
+  } else if (hasSummary && !hasSkills) {
+    nextMessage = "List at least three relevant skills to make your resume easier for ATS software to scan.";
+    actionLabel = "Add key skills";
+    coachTarget = "bSkills";
+  } else if (hasSkills && !experienceWithDetail) {
+    nextMessage = "Add a work achievement. Start each bullet with an action and explain what you improved.";
+    actionLabel = "Add experience detail";
+    coachTarget = "experience-description";
+  } else if (experienceWithDetail && achievementCount === 0) {
+    nextMessage = "Your experience is strong. Add a number, percentage, budget, or time saved to show measurable impact.";
+    actionLabel = "Add a result";
+    coachTarget = "experience-description";
+  } else if (score >= 75) {
+    nextMessage = "Looking polished. Generate it, scan against a job, then tailor your skills to the best match.";
+    actionLabel = "Generate resume";
+    coachTarget = "generateBtn";
+  }
+
+  coachRing.style.setProperty("--coach-progress", `${Math.round(score * 3.6)}deg`);
+  coachScore.textContent = score;
+  coachMessage.textContent = nextMessage;
+  coachContact.textContent = hasContact ? "Ready" : "Missing";
+  coachSkills.textContent = `${data.skills.length} listed`;
+  coachImpact.textContent = `${achievementCount} result${achievementCount === 1 ? "" : "s"}`;
+  coachActionBtn.textContent = actionLabel;
+}
+
+function setDraftStatus(message) {
+  draftStatus.textContent = message;
+}
+
+function saveBuilderDraft() {
+  const data = getBuilderFieldValues();
+  if (!hasBuilderContent(data)) {
+    localStorage.removeItem(BUILDER_DRAFT_KEY);
+    setDraftStatus("Draft stays on this device");
+    return;
+  }
+  try {
+    localStorage.setItem(BUILDER_DRAFT_KEY, JSON.stringify({
+      ...data, photoDataUrl, template: selectedTemplate, savedAt: Date.now(),
+    }));
+    setDraftStatus("Draft saved on this device");
+  } catch (error) {
+    console.warn("Could not save resume draft", error);
+    setDraftStatus("Autosave unavailable");
+  }
+}
+
+function scheduleBuilderDraftSave() {
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(saveBuilderDraft, 550);
+}
+
 // --- Live preview: re-renders the visual panel from current form state.
 // Debounced on text input so fast typing doesn't thrash the DOM. ---
 let previewDebounceTimer = null;
@@ -859,9 +1070,7 @@ function scheduleLivePreviewUpdate() {
 
 function updateLivePreview() {
   const data = getBuilderFieldValues();
-  const hasAnyContent = data.fullName || data.email || data.phone || data.summary ||
-    data.skills.length || data.experience.some(e => e.title || e.company) ||
-    data.education.some(e => e.degree || e.school);
+  const hasAnyContent = hasBuilderContent(data);
 
   if (!hasAnyContent) {
     resumeVisual.innerHTML = `<div class="preview-placeholder">Start filling the form on the left — your resume builds itself here.</div>`;
@@ -869,6 +1078,8 @@ function updateLivePreview() {
     resumeVisual.innerHTML = renderResumeVisual(selectedTemplate, { ...data, photoDataUrl });
   }
   updateBuilderProgress(data);
+  updateResumeCoach(data);
+  scheduleBuilderDraftSave();
 }
 
 function updateBuilderProgress(data) {
@@ -947,7 +1158,7 @@ function removeRowAnimated(row, container) {
   setTimeout(() => { if (row.isConnected) finish(); }, 400);
 }
 
-function addExperienceRow() {
+function addExperienceRow(initialValues = {}) {
   const row = document.createElement("div");
   row.className = "entry-row";
   row.innerHTML = `
@@ -958,12 +1169,15 @@ function addExperienceRow() {
     <textarea data-field="description" placeholder="What did you do? One point per line."></textarea>
     <button type="button" class="remove-entry-btn">Remove ✕</button>
   `;
+  row.querySelectorAll("[data-field]").forEach(field => {
+    field.value = initialValues[field.dataset.field] || "";
+  });
   row.querySelector(".remove-entry-btn").addEventListener("click", () => removeRowAnimated(row, experienceList));
   experienceList.appendChild(row);
   updateEmptyStates();
 }
 
-function addEducationRow() {
+function addEducationRow(initialValues = {}) {
   const row = document.createElement("div");
   row.className = "entry-row";
   row.innerHTML = `
@@ -972,6 +1186,9 @@ function addEducationRow() {
     <input type="text" data-field="year" placeholder="Year (optional)" />
     <button type="button" class="remove-entry-btn">Remove ✕</button>
   `;
+  row.querySelectorAll("[data-field]").forEach(field => {
+    field.value = initialValues[field.dataset.field] || "";
+  });
   row.querySelector(".remove-entry-btn").addEventListener("click", () => removeRowAnimated(row, educationList));
   educationList.appendChild(row);
   updateEmptyStates();
@@ -988,6 +1205,55 @@ function collectEntries(container) {
     entries.push(entry);
   });
   return entries;
+}
+
+function restoreBuilderDraft() {
+  try {
+    const rawDraft = localStorage.getItem(BUILDER_DRAFT_KEY);
+    if (!rawDraft) return false;
+    const draft = JSON.parse(rawDraft);
+    if (!draft || typeof draft !== "object") return false;
+
+    const fields = {
+      bFullName: draft.fullName,
+      bEmail: draft.email,
+      bPhone: draft.phone,
+      bTargetRole: draft.targetRole,
+      bSummary: draft.summary,
+      bSkills: Array.isArray(draft.skills) ? draft.skills.join(", ") : "",
+    };
+    Object.entries(fields).forEach(([id, value]) => {
+      document.getElementById(id).value = typeof value === "string" ? value : "";
+    });
+
+    experienceList.innerHTML = "";
+    educationList.innerHTML = "";
+    const experience = Array.isArray(draft.experience) ? draft.experience : [];
+    const education = Array.isArray(draft.education) ? draft.education : [];
+    (experience.length ? experience : [{}]).forEach(addExperienceRow);
+    (education.length ? education : [{}]).forEach(addEducationRow);
+
+    if (["minimal", "sidebar", "bold"].includes(draft.template)) {
+      selectedTemplate = draft.template;
+      templatePicker.querySelectorAll(".template-option").forEach(option => {
+        const selected = option.dataset.template === selectedTemplate;
+        option.classList.toggle("selected", selected);
+        option.setAttribute("aria-checked", String(selected));
+      });
+    }
+
+    if (typeof draft.photoDataUrl === "string" && draft.photoDataUrl.startsWith("data:image/")) {
+      photoDataUrl = draft.photoDataUrl;
+      photoPreview.innerHTML = `<img src="${photoDataUrl}" alt="Your photo">`;
+    }
+    updateEmptyStates();
+    setDraftStatus("Restored from this device");
+    return true;
+  } catch (error) {
+    console.warn("Could not restore resume draft", error);
+    localStorage.removeItem(BUILDER_DRAFT_KEY);
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1051,13 +1317,17 @@ function renderResumeVisual(template, data) {
   const contactStacked = [data.email, data.phone].filter(Boolean).map(escapeHtml).join("<br>");
   const skillsHtml = data.skills.map(s => `<span class="r-skill-pill">${escapeHtml(s)}</span>`).join("");
 
-  const experienceHtml = validExperience.map(exp => `
+  const experienceHtml = validExperience.map(exp => {
+    const headerText = [exp.title, exp.company].filter(Boolean).join(" — ");
+    const metaText = [exp.duration, exp.location].filter(Boolean).join(" · ");
+    return `
     <div class="r-entry">
-      <div class="r-entry-title">${escapeHtml(exp.title)}</div>
-      ${exp.duration ? `<div class="r-entry-sub">${escapeHtml(exp.duration)}</div>` : ""}
+      <div class="r-entry-title">${escapeHtml(headerText)}</div>
+      ${metaText ? `<div class="r-entry-sub">${escapeHtml(metaText)}</div>` : ""}
       ${exp.description ? `<ul>${exp.description.split("\n").filter(l => l.trim()).map(l => `<li>${escapeHtml(l.trim())}</li>`).join("")}</ul>` : ""}
     </div>
-  `).join("");
+  `;
+  }).join("");
 
   const educationHtml = validEducation.map(edu => `
     <div class="r-entry">
@@ -1171,6 +1441,7 @@ async function generateResume() {
     saveToHistoryBtn.disabled = false;
     downloadPdfBtn.disabled = false;
     downloadBtn.disabled = false;
+    copyResumeBtn.disabled = false;
 
     stopStatusCycle();
     showSuccessStatus(builderStatus, `Resume generated — ${resData.detected_skills.length} skills detected.`);
@@ -1189,6 +1460,22 @@ async function generateResume() {
 addExperienceBtn.addEventListener("click", () => { addExperienceRow(); updateLivePreview(); });
 addEducationBtn.addEventListener("click", () => { addEducationRow(); updateLivePreview(); });
 generateBtn.addEventListener("click", generateResume);
+
+coachActionBtn.addEventListener("click", () => {
+  if (coachTarget === "experience-description") {
+    let description = experienceList.querySelector('textarea[data-field="description"]');
+    if (!description) {
+      addExperienceRow();
+      description = experienceList.querySelector('textarea[data-field="description"]');
+    }
+    description?.scrollIntoView({ behavior: "smooth", block: "center" });
+    description?.focus();
+    return;
+  }
+  const target = document.getElementById(coachTarget);
+  target?.scrollIntoView({ behavior: "smooth", block: "center" });
+  target?.focus();
+});
 
 // Live preview wiring — text fields update on input (debounced), dynamic
 // experience/education rows are handled via delegation since they're
@@ -1214,12 +1501,17 @@ saveToHistoryBtn.addEventListener("click", async () => {
   saveToHistoryStatus.classList.remove("error");
   saveToHistoryStatus.textContent = "Saving...";
   try {
-    const fullName = document.getElementById("bFullName").value.trim() || "resume";
+    const builderData = getBuilderFieldValues();
+    const fullName = builderData.fullName || "resume";
     const filename = `${fullName.toLowerCase().replace(/\s+/g, "-")}.txt`;
     const res = await fetch(`${API_BASE}/resumes`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ filename, text: lastPlainText }),
+      body: JSON.stringify({
+        filename,
+        text: lastPlainText,
+        visual_data: { ...builderData, photoDataUrl, template: selectedTemplate },
+      }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || data.error || "Could not save");
@@ -1245,13 +1537,69 @@ downloadBtn.addEventListener("click", () => {
   URL.revokeObjectURL(url);
 });
 
-downloadPdfBtn.addEventListener("click", () => {
-  window.print();
+copyResumeBtn.addEventListener("click", async () => {
+  if (!lastPlainText) return;
+  const originalLabel = copyResumeBtn.textContent;
+  try {
+    await navigator.clipboard.writeText(lastPlainText);
+    copyResumeBtn.textContent = "Copied";
+  } catch (error) {
+    const textarea = document.createElement("textarea");
+    textarea.value = lastPlainText;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    textarea.remove();
+    copyResumeBtn.textContent = "Copied";
+  }
+  setTimeout(() => { copyResumeBtn.textContent = originalLabel; }, 1800);
 });
 
-// start with one empty row each so the form isn't empty on load
-addExperienceRow();
-addEducationRow();
+downloadPdfBtn.addEventListener("click", async () => {
+  if (!currentUser) {
+    openAuthModal("login");
+    return;
+  }
+
+  downloadPdfBtn.disabled = true;
+  saveToHistoryStatus.classList.remove("error");
+  saveToHistoryStatus.textContent = "Preparing PDF...";
+  try {
+    const builderData = getBuilderFieldValues();
+    const fullName = builderData.fullName || "resume";
+    const filename = `${fullName.toLowerCase().replace(/\s+/g, "-")}.txt`;
+    const res = await fetch(`${API_BASE}/resumes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({
+        filename,
+        text: lastPlainText,
+        visual_data: { ...builderData, photoDataUrl, template: selectedTemplate },
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || data.error || "Could not prepare PDF");
+
+    refreshResumeHistory();
+    refreshDashboard();
+    downloadSavedResume(data.id, data.filename);
+    saveToHistoryStatus.textContent = "PDF ready.";
+  } catch (err) {
+    saveToHistoryStatus.textContent = err.message;
+    saveToHistoryStatus.classList.add("error");
+  } finally {
+    downloadPdfBtn.disabled = false;
+  }
+});
+
+// Start with one empty row each, unless an autosaved draft is available.
+if (!restoreBuilderDraft()) {
+  addExperienceRow();
+  addEducationRow();
+}
 updateLivePreview();
 
 // ---------------------------------------------------------------------------

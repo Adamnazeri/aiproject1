@@ -1,0 +1,136 @@
+:root {
+  color: #1a1a1a;
+  font-family: "Inter", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #eef1f5;
+}
+
+.print-shell {
+  padding: 1.25rem;
+}
+
+.print-toolbar {
+  width: min(210mm, 100%);
+  margin: 0 auto 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  color: #334155;
+  font-size: 0.88rem;
+}
+
+.print-toolbar p { margin: 0; }
+
+.print-toolbar button {
+  border: 0;
+  border-radius: 7px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0.7rem 1rem;
+}
+
+.resume-sheet {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 12px 40px rgba(15, 41, 71, 0.18);
+}
+
+.resume-doc { font-family: "Inter", Arial, sans-serif; }
+.resume-doc .r-avatar {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #d9dee6;
+  flex-shrink: 0;
+}
+.resume-doc .r-section-title {
+  margin: 1.1rem 0 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.resume-doc .r-skill-pill {
+  display: inline-block;
+  margin: 0 0.35rem 0.35rem 0;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.25;
+  padding: 0.2rem 0.6rem;
+}
+.resume-doc .r-entry { margin-bottom: 0.8rem; break-inside: avoid; }
+.resume-doc .r-entry-title { font-size: 0.92rem; font-weight: 600; line-height: 1.25; }
+.resume-doc .r-entry-sub { margin-top: 0.15rem; color: #64748b; font-size: 0.78rem; line-height: 1.35; }
+.resume-doc ul { margin: 0.2rem 0 0; padding-left: 1.1rem; font-size: 0.83rem; line-height: 1.5; }
+.resume-doc li + li { margin-top: 0.2rem; }
+.resume-doc p { margin: 0; font-size: 0.85rem; line-height: 1.55; white-space: pre-line; }
+
+/* Minimal template */
+.tpl-minimal { padding: 2.2rem; }
+.tpl-minimal .r-header { margin-bottom: 1rem; text-align: center; }
+.tpl-minimal .r-avatar { display: block; margin: 0 auto 0.75rem; }
+.tpl-minimal .r-name { font-size: 1.6rem; font-weight: 700; }
+.tpl-minimal .r-role { margin-top: 0.2rem; color: #64748b; font-size: 0.85rem; }
+.tpl-minimal .r-contact { margin-top: 0.3rem; color: #64748b; font-size: 0.78rem; }
+.tpl-minimal .r-skill-pill { background: #efeee9; color: #333; }
+
+/* Sidebar template */
+.tpl-sidebar { display: grid; grid-template-columns: 190px 1fr; min-height: 400px; }
+.tpl-sidebar .r-side { background: #1b3a63; color: #f4f3ef; padding: 1.8rem 1.2rem; }
+.tpl-sidebar .r-side .r-avatar { display: block; margin: 0 auto 0.9rem; }
+.tpl-sidebar .r-side .r-name { font-size: 1.15rem; font-weight: 700; text-align: center; }
+.tpl-sidebar .r-side .r-role { margin-top: 0.2rem; font-size: 0.75rem; opacity: 0.75; text-align: center; }
+.tpl-sidebar .r-side .r-contact { font-size: 0.72rem; opacity: 0.75; margin-top: 1rem; line-height: 1.6; word-break: break-word; }
+.tpl-sidebar .r-side .r-section-title { color: #f4f3ef; opacity: 0.85; }
+.tpl-sidebar .r-side .r-skill-pill { background: rgba(255, 255, 255, 0.14); color: #f4f3ef; }
+.tpl-sidebar .r-side .r-entry-sub { color: rgba(244, 243, 239, 0.76); }
+.tpl-sidebar .r-main { padding: 1.8rem; }
+
+/* Bold header template */
+.tpl-bold .r-header {
+  display: flex;
+  align-items: center;
+  padding: 1.8rem 2rem;
+  gap: 1.2rem;
+  background: #4c6b87;
+  color: #fff;
+}
+.tpl-bold .r-header .r-name { font-size: 1.4rem; font-weight: 700; }
+.tpl-bold .r-header .r-role { font-size: 0.85rem; opacity: 0.85; margin-top: 0.15rem; }
+.tpl-bold .r-header .r-contact { font-size: 0.75rem; opacity: 0.85; margin-top: 0.3rem; }
+.tpl-bold .r-body { display: grid; grid-template-columns: 1fr 1.4fr; gap: 1.8rem; padding: 1.8rem 2rem; }
+.tpl-bold .r-skill-pill { background: #eaf0f5; color: #345066; }
+
+.error-card {
+  padding: 2rem;
+  color: #991b1b;
+  font-size: 1rem;
+}
+
+@media print {
+  @page { size: A4; margin: 0; }
+
+  html, body { width: 210mm; min-height: 297mm; background: #fff; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .print-shell { padding: 0; }
+  .print-toolbar { display: none; }
+  .resume-sheet { margin: 0; box-shadow: none; }
+}
+
+@media screen and (max-width: 850px) {
+  .print-shell { overflow-x: auto; }
+  .print-toolbar { width: 210mm; }
+}
