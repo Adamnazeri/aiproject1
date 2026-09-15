@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ResumeMaker — AI Resume Matcher</title>
+<title>ResumeMaker — Resume Matcher</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
@@ -22,7 +22,6 @@
         <span class="logo-tagline">CREATE. APPLY. GET HIRED.</span>
       </div>
     </div>
-    <span class="ai-badge">AI-powered</span>
   </div>
   <div class="topbar-right" id="authArea">
     <button type="button" class="nav-btn ghost" id="loginNavBtn">Log in</button>
@@ -163,32 +162,10 @@
         <div class="preview-sticky">
           <div class="preview-panel-head">
             <span class="eyebrow" style="margin:0;">Live Preview</span>
-            <span class="ai-badge">AI-powered</span>
           </div>
           <div id="resumeVisual" class="resume-visual-wrap">
             <div class="preview-placeholder">Start filling the form on the left — your resume builds itself here.</div>
           </div>
-          <section class="resume-coach" aria-labelledby="coachTitle" aria-live="polite">
-            <div class="coach-topline">
-              <div>
-                <span class="coach-kicker">SMART RESUME COACH</span>
-                <h3 id="coachTitle">Build a stronger first impression</h3>
-              </div>
-              <div class="coach-ring" id="coachRing" style="--coach-progress:0deg;">
-                <span id="coachScore">0</span><small>/100</small>
-              </div>
-            </div>
-            <p class="coach-message" id="coachMessage">Add a few details and I will highlight your next best improvement.</p>
-            <div class="coach-metrics">
-              <div class="coach-metric"><span>Contact</span><strong id="coachContact">Missing</strong></div>
-              <div class="coach-metric"><span>Skills</span><strong id="coachSkills">0 listed</strong></div>
-              <div class="coach-metric"><span>Impact</span><strong id="coachImpact">0 results</strong></div>
-            </div>
-            <div class="coach-footer">
-              <button type="button" class="coach-action" id="coachActionBtn">Start with your details</button>
-              <span class="draft-status" id="draftStatus">Draft stays on this device</span>
-            </div>
-          </section>
           <div class="preview-actions" id="generatedPreview">
             <button type="button" id="useForScanBtn" class="secondary-btn" disabled>Use this to scan jobs ↓</button>
             <button type="button" id="saveToHistoryBtn" class="secondary-btn" disabled>💾 Save to My Resumes</button>
@@ -234,23 +211,6 @@
     <div id="matchList" class="match-list"></div>
   </section>
 
-  <section class="assistant reveal narrow">
-    <p class="eyebrow">// 05 — ASK THE ASSISTANT</p>
-    <h2 class="builder-title">Career AI Assistant</h2>
-    <p class="hero-copy">Ask about your resume, your scan results, or how to close the gap on a job you're eyeing — it sees your current resume and match results.</p>
-
-    <div id="chatMessages" class="chat-messages"></div>
-
-    <div class="input-row">
-      <input id="chatInput" type="text" placeholder="e.g. How can I improve my match for the Backend Engineer role?" />
-      <button id="chatSendBtn">
-        <span class="btn-label">ASK</span>
-        <span class="btn-arrow">→</span>
-      </button>
-    </div>
-    <p id="chatStatus" class="status-msg"></p>
-  </section>
-
   <section class="pricing reveal narrow">
     <p class="eyebrow">// 06 — PLANS</p>
     <h2 class="builder-title">Simple, transparent pricing</h2>
@@ -278,7 +238,6 @@
           <li>Everything in Free</li>
           <li>Full match breakdown — Skill &amp; Domain Match</li>
           <li>Full skill-gap analysis</li>
-          <li>Unlimited AI Assistant</li>
           <li>Unlimited resume history</li>
           <li>Application tracker</li>
           <li>Priority match refresh</li>
