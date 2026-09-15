@@ -159,7 +159,6 @@ async function fetchCurrentUser() {
     console.error(err);
   }
 }
-
 // --- Dashboard modal (Resume Score / Jobs Matched / Saved / Applications / Interviews) ---
 const dashboardModal = document.getElementById("dashboardModal");
 const dashboardModalClose = document.getElementById("dashboardModalClose");
@@ -938,19 +937,10 @@ const photoPreview = document.getElementById("photoPreview");
 const removePhotoBtn = document.getElementById("removePhotoBtn");
 const templatePicker = document.getElementById("templatePicker");
 const copyResumeBtn = document.getElementById("copyResumeBtn");
-const coachRing = document.getElementById("coachRing");
-const coachScore = document.getElementById("coachScore");
-const coachMessage = document.getElementById("coachMessage");
-const coachContact = document.getElementById("coachContact");
-const coachSkills = document.getElementById("coachSkills");
-const coachImpact = document.getElementById("coachImpact");
-const coachActionBtn = document.getElementById("coachActionBtn");
-const draftStatus = document.getElementById("draftStatus");
 
 let photoDataUrl = null;
 let selectedTemplate = "minimal";
 let lastPlainText = "";
-let coachTarget = "bFullName";
 let draftSaveTimer = null;
 
 const BUILDER_DRAFT_KEY = "signal_resume_builder_draft_v1";
@@ -979,79 +969,18 @@ function hasBuilderContent(data) {
     data.education.some(entry => entry.degree || entry.school);
 }
 
-function updateResumeCoach(data) {
-  const hasContact = Boolean(data.email || data.phone);
-  const hasSummary = data.summary.length >= 40;
-  const hasSkills = data.skills.length >= 3;
-  const experienceWithDetail = data.experience.filter(entry => entry.title || entry.company)
-    .filter(entry => entry.description.trim()).length;
-  const achievementCount = data.experience.flatMap(entry => entry.description.split("\n"))
-    .filter(line => /\d|%|\$|rm\s?\d|increased|reduced|improved|grew|saved/i.test(line)).length;
-  const hasEducation = data.education.some(entry => entry.degree || entry.school);
-
-  const score = Math.min(100,
-    (data.fullName ? 10 : 0) + (hasContact ? 12 : 0) + (data.targetRole ? 6 : 0) +
-    (hasSummary ? 18 : 0) + (hasSkills ? 18 : Math.min(data.skills.length * 5, 15)) +
-    Math.min(experienceWithDetail * 16, 28) + Math.min(achievementCount * 3, 6) + (hasEducation ? 2 : 0)
-  );
-
-  let nextMessage = "Start with your name and one way for employers to reach you.";
-  let actionLabel = "Add your details";
-  coachTarget = "bFullName";
-  if (data.fullName && !hasContact) {
-    nextMessage = "Your name is in place. Add an email or phone number so recruiters can contact you.";
-    actionLabel = "Add contact details";
-    coachTarget = "bEmail";
-  } else if (hasContact && !hasSummary) {
-    nextMessage = "Add a short summary with your strengths, role, and the value you bring.";
-    actionLabel = "Strengthen summary";
-    coachTarget = "bSummary";
-  } else if (hasSummary && !hasSkills) {
-    nextMessage = "List at least three relevant skills to make your resume easier for ATS software to scan.";
-    actionLabel = "Add key skills";
-    coachTarget = "bSkills";
-  } else if (hasSkills && !experienceWithDetail) {
-    nextMessage = "Add a work achievement. Start each bullet with an action and explain what you improved.";
-    actionLabel = "Add experience detail";
-    coachTarget = "experience-description";
-  } else if (experienceWithDetail && achievementCount === 0) {
-    nextMessage = "Your experience is strong. Add a number, percentage, budget, or time saved to show measurable impact.";
-    actionLabel = "Add a result";
-    coachTarget = "experience-description";
-  } else if (score >= 75) {
-    nextMessage = "Looking polished. Generate it, scan against a job, then tailor your skills to the best match.";
-    actionLabel = "Generate resume";
-    coachTarget = "generateBtn";
-  }
-
-  coachRing.style.setProperty("--coach-progress", `${Math.round(score * 3.6)}deg`);
-  coachScore.textContent = score;
-  coachMessage.textContent = nextMessage;
-  coachContact.textContent = hasContact ? "Ready" : "Missing";
-  coachSkills.textContent = `${data.skills.length} listed`;
-  coachImpact.textContent = `${achievementCount} result${achievementCount === 1 ? "" : "s"}`;
-  coachActionBtn.textContent = actionLabel;
-}
-
-function setDraftStatus(message) {
-  draftStatus.textContent = message;
-}
-
 function saveBuilderDraft() {
   const data = getBuilderFieldValues();
   if (!hasBuilderContent(data)) {
     localStorage.removeItem(BUILDER_DRAFT_KEY);
-    setDraftStatus("Draft stays on this device");
     return;
   }
   try {
     localStorage.setItem(BUILDER_DRAFT_KEY, JSON.stringify({
       ...data, photoDataUrl, template: selectedTemplate, savedAt: Date.now(),
     }));
-    setDraftStatus("Draft saved on this device");
   } catch (error) {
     console.warn("Could not save resume draft", error);
-    setDraftStatus("Autosave unavailable");
   }
 }
 
@@ -1078,7 +1007,6 @@ function updateLivePreview() {
     resumeVisual.innerHTML = renderResumeVisual(selectedTemplate, { ...data, photoDataUrl });
   }
   updateBuilderProgress(data);
-  updateResumeCoach(data);
   scheduleBuilderDraftSave();
 }
 
@@ -1247,7 +1175,6 @@ function restoreBuilderDraft() {
       photoPreview.innerHTML = `<img src="${photoDataUrl}" alt="Your photo">`;
     }
     updateEmptyStates();
-    setDraftStatus("Restored from this device");
     return true;
   } catch (error) {
     console.warn("Could not restore resume draft", error);
@@ -1461,22 +1388,6 @@ addExperienceBtn.addEventListener("click", () => { addExperienceRow(); updateLiv
 addEducationBtn.addEventListener("click", () => { addEducationRow(); updateLivePreview(); });
 generateBtn.addEventListener("click", generateResume);
 
-coachActionBtn.addEventListener("click", () => {
-  if (coachTarget === "experience-description") {
-    let description = experienceList.querySelector('textarea[data-field="description"]');
-    if (!description) {
-      addExperienceRow();
-      description = experienceList.querySelector('textarea[data-field="description"]');
-    }
-    description?.scrollIntoView({ behavior: "smooth", block: "center" });
-    description?.focus();
-    return;
-  }
-  const target = document.getElementById(coachTarget);
-  target?.scrollIntoView({ behavior: "smooth", block: "center" });
-  target?.focus();
-});
-
 // Live preview wiring — text fields update on input (debounced), dynamic
 // experience/education rows are handled via delegation since they're
 // created after page load.
@@ -1601,83 +1512,3 @@ if (!restoreBuilderDraft()) {
   addEducationRow();
 }
 updateLivePreview();
-
-// ---------------------------------------------------------------------------
-// AI Career Assistant
-// ---------------------------------------------------------------------------
-const chatMessages = document.getElementById("chatMessages");
-const chatInput = document.getElementById("chatInput");
-const chatSendBtn = document.getElementById("chatSendBtn");
-const chatStatus = document.getElementById("chatStatus");
-
-let chatHistory = []; // [{ role: "user" | "assistant", content: "..." }]
-
-function renderChat() {
-  chatMessages.innerHTML = chatHistory.length
-    ? chatHistory.map(m => `<div class="chat-bubble ${m.role}">${escapeHtml(m.content)}</div>`).join("")
-    : `<p class="chat-empty">No messages yet — ask something about your resume or matches.</p>`;
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-async function sendChatMessage() {
-  const text = chatInput.value.trim();
-  if (!text) return;
-
-  if (!currentUser) {
-    openAuthModal("login");
-    return;
-  }
-
-  chatHistory.push({ role: "user", content: text });
-  renderChat();
-  chatInput.value = "";
-  chatStatus.classList.remove("error");
-  chatStatus.innerHTML = `Thinking<span class="thinking-dots"><span></span><span></span><span></span></span>`;
-  chatSendBtn.disabled = true;
-
-  try {
-    const res = await fetch(`${API_BASE}/assistant`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({
-        messages: chatHistory,
-        context: {
-          resume_text: resumeText.value.trim() || lastPlainText,
-          top_matches: lastMatchResults.slice(0, 5),
-        },
-      }),
-    });
-    const data = await res.json();
-
-    if (res.status === 401) {
-      chatHistory.pop(); // don't leave an unanswered message sitting in history
-      renderChat();
-      openAuthModal("login");
-      return;
-    }
-    if (!res.ok && isProRequiredResponse(data)) {
-      showProLockStatus(chatStatus, data.message);
-      return;
-    }
-    if (!res.ok) throw new Error(data.error || "Assistant failed");
-
-    chatHistory.push({ role: "assistant", content: data.reply });
-    renderChat();
-    chatStatus.textContent = (data.remaining_today !== null && data.remaining_today !== undefined)
-      ? `${data.remaining_today} of ${data.daily_limit} daily messages left on the Free plan.`
-      : "";
-  } catch (err) {
-    console.error(err);
-    chatStatus.textContent = err.message || "Something went wrong.";
-    chatStatus.classList.add("error");
-  } finally {
-    chatSendBtn.disabled = false;
-  }
-}
-
-chatSendBtn.addEventListener("click", sendChatMessage);
-chatInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") sendChatMessage();
-});
-
-renderChat();

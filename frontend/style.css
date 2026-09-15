@@ -186,28 +186,6 @@ body {
 main { max-width: 1180px; margin: 0 auto; padding: 3rem 2rem 5rem; }
 .narrow { max-width: 780px; margin-left: auto; margin-right: auto; }
 
-.ai-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-family: var(--font-display);
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--secondary);
-  background: rgba(23, 163, 152, 0.1);
-  border: 1px solid rgba(23, 163, 152, 0.25);
-  padding: 0.2rem 0.55rem;
-  border-radius: 999px;
-}
-.ai-badge::before {
-  content: "";
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--secondary);
-  animation: aiPulse 1.6s ease-in-out infinite;
-}
-
 /* ===========================================================================
    SCROLL REVEAL — toggled by IntersectionObserver in script.js.
    Elements start hidden+offset, then animate in once when they enter view.
